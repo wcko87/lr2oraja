@@ -43,6 +43,15 @@ public enum JudgeProperty {
             new boolean[]{true, true, true, true, true, false },
             JudgeWindowRule.NORMAL
 			),
+    LR2(new int[][]{{-21, 21}, {-60, 60}, {-120, 120}, {-200, 200}, {0, 1000}}, 
+            new int[][]{{-21, 21}, {-60, 60}, {-120, 120}, {-200, 200}, {0, 1000}}, 
+            new int[][]{{-120, 120}, {-160, 160}, {-170, 170}, {-200, 200}}, 
+            new int[][]{{-120, 120}, {-160, 160}, {-170, 170}, {-200, 200}}, 
+            new boolean[]{true, true, true, false, false, true },
+            MissCondition.ALWAYS,
+            new boolean[]{true, true, true, true, true, false },
+            JudgeWindowRule.NORMAL
+            ),
 	;
 
     /**
@@ -129,39 +138,59 @@ public enum JudgeProperty {
     	 * JUDGERANKの倍率(VERYHARD, HARD, NORMAL, EASY, VERYEASY)
     	 */
     	public final int[] judgerank;
+
+        private static final int[][] LR2_JUDGE_WINDOWS = {
+            {0,8,15,18,21}, // PGREAT
+            {0,24,30,40,60}, // GREAT
+            {0,40,60,100,120}, // GOOD
+        };
+
     	
         private static int[][] create(int[][] org, int judgerank, int judgeWindowRate, int constraint, boolean pms) {
     		final int[][] judge = new int[org.length][2];
-    		final boolean[] fix = pms ? new boolean[]{true, false, false, true, true} : new boolean[]{false, false, false, false, true};
-    		for (int i = 0; i < judge.length; i++) {
-    			for(int j = 0;j < 2;j++) {
-					judge[i][j] = fix[i] ? org[i][j] : org[i][j] * judgerank / 100;
-    			}
-    		}
+            for (int i = 0; i < judge.length; i++) {
+                for(int j = 0; j < judge[i].length; j++) {
+                    judge[i][j] = org[i][j];
+                }
+            }
+    		//final boolean[] fix = pms ? new boolean[]{true, false, false, true, true} : new boolean[]{false, false, false, false, true};
+    		//for (int i = 0; i < judge.length; i++) {
+    		//	for(int j = 0;j < 2;j++) {
+			//		judge[i][j] = fix[i] ? org[i][j] : org[i][j] * judgerank / 100;
+    		//	}
+    		//}
 
-    		int fixmin = -1;
-    		for (int i = 0; i < Math.min(org.length, 4); i++) {
-    			if(fix[i]) {
-    				fixmin = i;
-    				continue;
-    			}
-        		int fixmax = -1;
-    			for(int j = i + 1;j < 4;j++) {
-        			if(fix[j]) {
-        				fixmax = j;
-        				break;
-        			}
-    			}
-        		
-    			for(int j = 0;j < 2;j++) {
-					if(fixmin != -1 && Math.abs(judge[i][j]) < Math.abs(judge[fixmin][j])) {
-						judge[i][j] = judge[fixmin][j];
-					}
-					if(fixmax != -1 && Math.abs(judge[i][j]) > Math.abs(judge[fixmax][j])) {
-						judge[i][j] = judge[fixmax][j];
-					}
-    			}
-    		}
+            // Interpolate LR2 Judge windows
+            {
+                // only change pgreat, great, good
+                final int fixmax = 3;
+                if (judgerank < 100) {
+                    int judgeindex = judgerank/25;
+                    int interpolate = judgerank%25;
+                    for (int i = 0; i < fixmax; i++) {
+                        int[] lr2judge = LR2_JUDGE_WINDOWS[i];
+                        for(int j = 0; j < 2; j++) {
+                            int interpolatedJudge = lr2judge[judgeindex] + (interpolate*(lr2judge[judgeindex+1] - lr2judge[judgeindex]) + 12)/25;
+                            judge[i][j] = org[i][j] * interpolatedJudge / lr2judge[4];
+                        }
+                    }
+                } else {
+                    for (int i = 0; i < fixmax; i++) {
+                        for(int j = 0; j < 2; j++) {
+                            judge[i][j] = org[i][j] * judgerank / 100;
+                        }
+                    }
+                }
+
+                // correction if we exceed the bad windows
+                for (int i = fixmax-1; i >= 0; i--) {
+                    for(int j = 0; j < 2; j++) {
+                        if(Math.abs(judge[i][j]) > Math.abs(judge[i+1][j])) {
+                            judge[i][j] = judge[i+1][j];
+                        }
+                    }
+                }
+            }
 
     		// judgeWindowRateによる補正
     		for (int i = 0; i < Math.min(org.length, 2); i++) {

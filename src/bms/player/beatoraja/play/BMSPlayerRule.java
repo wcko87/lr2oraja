@@ -10,16 +10,16 @@ import bms.model.Mode;
  */
 public enum BMSPlayerRule {
 
-    BEAT_5K(GaugeProperty.FIVEKEYS, JudgeProperty.FIVEKEYS),
-    BEAT_7K(GaugeProperty.SEVENKEYS, JudgeProperty.SEVENKEYS),
-    BEAT_10K(GaugeProperty.FIVEKEYS, JudgeProperty.FIVEKEYS),
-    BEAT_14K(GaugeProperty.SEVENKEYS, JudgeProperty.SEVENKEYS),
-    POPN_5K(GaugeProperty.PMS, JudgeProperty.PMS),
-    POPN_9K(GaugeProperty.PMS, JudgeProperty.PMS),
-    KEYBOARD_24K(GaugeProperty.KEYBOARD, JudgeProperty.KEYBOARD),
-    KEYBOARD_24K_DOUBLE(GaugeProperty.KEYBOARD, JudgeProperty.KEYBOARD),
-    LR2(GaugeProperty.LR2, JudgeProperty.SEVENKEYS),
-    Default(GaugeProperty.SEVENKEYS, JudgeProperty.SEVENKEYS),
+    BEAT_5K(GaugeProperty.LR2, JudgeProperty.LR2),
+    BEAT_7K(GaugeProperty.LR2, JudgeProperty.LR2),
+    BEAT_10K(GaugeProperty.LR2, JudgeProperty.LR2),
+    BEAT_14K(GaugeProperty.LR2, JudgeProperty.LR2),
+    POPN_5K(GaugeProperty.LR2, JudgeProperty.LR2),
+    POPN_9K(GaugeProperty.LR2, JudgeProperty.LR2),
+    KEYBOARD_24K(GaugeProperty.LR2, JudgeProperty.LR2),
+    KEYBOARD_24K_DOUBLE(GaugeProperty.LR2, JudgeProperty.LR2),
+    LR2(GaugeProperty.LR2, JudgeProperty.LR2),
+    Default(GaugeProperty.LR2, JudgeProperty.LR2),
     ;
 
     public final GaugeProperty gauge;
