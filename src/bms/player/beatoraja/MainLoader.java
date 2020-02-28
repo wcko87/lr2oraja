@@ -138,7 +138,7 @@ public class MainLoader extends Application {
 			cfg.vSyncEnabled = config.isVsync();
 			cfg.backgroundFPS = config.getMaxFramePerSecond();
 			cfg.foregroundFPS = config.getMaxFramePerSecond();
-			cfg.title = MainController.VERSION;
+			cfg.title = MainController.VERSION.replace("beatoraja", "LR2oraja");
 			
 			cfg.audioDeviceBufferSize = config.getAudioDeviceBufferSize();
 			cfg.audioDeviceSimultaneousSources = config.getAudioDeviceSimultaneousSources();
@@ -252,7 +252,7 @@ public class MainLoader extends Application {
 			bmsinfo.update(config);
 			Scene scene = new Scene(stackPane, stackPane.getPrefWidth(), stackPane.getPrefHeight());
 			primaryStage.setScene(scene);
-			primaryStage.setTitle(MainController.VERSION + " configuration");
+			primaryStage.setTitle(MainController.VERSION.replace("beatoraja", "LR2oraja") + " configuration");
 			primaryStage.setOnCloseRequest((event) -> {
 				bmsinfo.exit();
 			});

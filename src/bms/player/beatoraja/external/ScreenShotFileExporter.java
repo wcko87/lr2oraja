@@ -66,6 +66,7 @@ public class ScreenShotFileExporter implements ScreenShotExporter {
 			stateName = "_Config";
 		}
 		stateName = stateName.replace("\\", "￥").replace("/", "／").replace(":", "：").replace("*", "＊").replace("?", "？").replace("\"", "”").replace("<", "＜").replace(">", "＞").replace("|", "｜").replace("\t", " ");
+		stateName = "_LR2oraja" + stateName;
 
 		Pixmap pixmap = new Pixmap(Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight(), Pixmap.Format.RGBA8888);
 		try {
