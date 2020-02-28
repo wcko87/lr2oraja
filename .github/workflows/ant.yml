@@ -25,7 +25,6 @@ jobs:
       with:
         tag_name: Build ${{ github.run_id }}
         release_name: LR2oraja Build ${{ github.run_id }}
-        body: Last commit ${{ github.sha }}
         draft: false
         prerelease: false
     - name: Upload Release Asset
