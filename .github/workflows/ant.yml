@@ -15,8 +15,25 @@ jobs:
         java-version: 1.8
     - name: Build with Ant
       run: ant -noinput -buildfile build.xml
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v1
+    - name: Create zip
+      run: zip --junk-paths LR2oraja.zip build/beatoraja.jar
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: LR2oraja
-        path: build/beatoraja.jar
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./LR2oraja.zip
+        asset_name: LR2oraja.zip
+        asset_content_type: application/zip
