@@ -23,7 +23,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: build
+        tag_name: build${{github.run_id}}
         release_name: LR2oraja Build
         draft: false
         prerelease: false
