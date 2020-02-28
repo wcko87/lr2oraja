@@ -23,8 +23,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: Build ${{ github.run_id }}
-        release_name: LR2oraja Build ${{ github.run_id }}
+        tag_name: Build ${{ github.ref }}
+        release_name: LR2oraja Build
         draft: false
         prerelease: false
     - name: Upload Release Asset
