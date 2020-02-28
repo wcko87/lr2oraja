@@ -25,7 +25,12 @@ jobs:
       with:
         tag_name: build${{github.run_id}}
         release_name: LR2oraja Build ${{github.run_id}}
-        body: Last commit ${{github.sha}}
+        body: |
+          beatoraja with LR2 judge and gauges.
+          The download only includes beatoraja.jar.
+          You have to download the original beatoraja and replace beatoraja.jar with this jar file.
+          We will try to keep LR2oraja releases on this page up-to-date with the latest versions of beatoraja.
+          Last commit ${{github.sha}}
         draft: false
         prerelease: false
     - name: Upload Release Asset
