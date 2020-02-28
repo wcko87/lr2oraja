@@ -24,7 +24,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: build${{github.run_id}}
-        release_name: LR2oraja Build
+        release_name: LR2oraja Build ${{github.run_id}}
+        body: Last commit ${{github.sha}}
         draft: false
         prerelease: false
     - name: Upload Release Asset
