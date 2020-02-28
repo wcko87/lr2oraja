@@ -15,3 +15,8 @@ jobs:
         java-version: 1.8
     - name: Build with Ant
       run: ant -noinput -buildfile build.xml
+    - name: Upload Artifact
+    - uses: actions/upload-artifact@v1
+      with:
+        name: LR2oraja
+        path: build/beatoraja.jar
