@@ -71,6 +71,8 @@ public enum BMSPlayerRule {
     }
     
 	private static double calculateDefaultTotal(Mode mode, int totalnotes) {
+        return 160.0 + (totalnotes + Math.min(Math.max(totalnotes, 390), 600) - 390)*11/70;
+        /*
 		switch (mode) {
 		case BEAT_7K:
 		case BEAT_5K:
@@ -85,6 +87,7 @@ public enum BMSPlayerRule {
 		default:
 			return Math.max(260.0, 7.605 * totalnotes / (0.01 * totalnotes + 6.5));
 		}
+        */
 	}
 }
 

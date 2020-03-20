@@ -117,7 +117,7 @@ public enum JudgeProperty {
     }
     
     public enum JudgeWindowRule {
-    	NORMAL (new int[]{25, 50, 75, 100, 125}){
+    	NORMAL (new int[]{25, 50, 75, 100, 75}){
 
 			@Override
 			public int[][] create(int[][] org, int judgerank, int judgeWindowRate, int constraint) {
@@ -125,7 +125,7 @@ public enum JudgeProperty {
 			}
     		
     	},
-    	PMS (new int[]{33, 50, 70, 100, 133}) {
+    	PMS (new int[]{25, 50, 75, 100, 75}) {
 
 			@Override
 			public int[][] create(int[][] org, int judgerank, int judgeWindowRate, int constraint) {
