@@ -50,7 +50,7 @@ import bms.tool.mdprocessor.MusicDownloadProcessor;
  */
 public class MainController extends ApplicationAdapter {
 
-	public static final String VERSION = "beatoraja 0.7.4";
+	public static final String VERSION = "beatoraja 0.7.6";
 
 	public static final boolean debug = false;
 
