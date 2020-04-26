@@ -93,13 +93,13 @@ public class MusicResult extends AbstractResult {
         	for(IRStatus irc : ir) {
     			boolean send = resource.isUpdateScore();
     			switch(irc.config.getIrsend()) {
-    			case PlayerConfig.IR_SEND_ALWAYS:
+    			case IRConfig.IR_SEND_ALWAYS:
     				break;
-    			case PlayerConfig.IR_SEND_COMPLETE_SONG:
+    			case IRConfig.IR_SEND_COMPLETE_SONG:
     				FloatArray gauge = resource.getGauge()[resource.getGrooveGauge().getType()];
     				send &= gauge.get(gauge.size - 1) > 0.0;
     				break;
-    			case PlayerConfig.IR_SEND_UPDATE_SCORE:
+    			case IRConfig.IR_SEND_UPDATE_SCORE:
     				send &= (newscore.getExscore() > oldscore.getExscore() || newscore.getClear() > oldscore.getClear()
     						|| newscore.getCombo() > oldscore.getCombo() || newscore.getMinbp() < oldscore.getMinbp());
     				break;
@@ -238,7 +238,12 @@ public class MusicResult extends AbstractResult {
 					} else if (resource.getPlayMode() == PlayMode.PLAY
 							&& key == ResultKeyProperty.ResultKey.REPLAY_SAME) {
 						// 同じ譜面でリプレイ
-						Logger.getGlobal().info("同じ譜面でリプレイ");
+						if(resource.isUpdateScore()) {
+							Logger.getGlobal().info("同じ譜面でリプレイ");							
+						} else {
+							Logger.getGlobal().info("アシストモード時は同じ譜面でリプレイできません");
+							resource.getReplayData().pattern = null;
+						}
 						resource.reloadBMSFile();
 						main.changeState(MainStateType.PLAY);
 					} else {
@@ -501,6 +506,9 @@ public class MusicResult extends AbstractResult {
 			break;
 		case BUTTON_REPLAY4:
 			saveReplayData(3);
+			break;
+		case BUTTON_OPEN_IR_WEBSITE:
+			execute(MusicResultCommand.OPEN_RANKING_ON_IR);
 			break;
 		default:
 			super.executeEvent(id, arg1, arg2);
