@@ -18,6 +18,9 @@ Because people wanted it.
 ### Does this work with beatoraja's IRs or LR2IR?
 LR2oraja is not intended to work with IRs.
 
+### Where is the source code?
+Switch to the lr2oraja branch in this repository. It's there.
+
 ## Changes from the original beatoraja
 #### 1. All keymodes (7K, 5K, 10K, 14K, 9K, 24K, 48K etc) will use LR2's gauges by default.
   - You can also see this in practice mode. Practice mode will also have LR2's gauges selected by default.
