@@ -227,6 +227,8 @@ public class SkinProperty {
 	public static final int STRING_SKIN_CUSTOMIZE_CATEGORY10 = 109;
 	public static final int STRING_SKIN_CUSTOMIZE_ITEM1 = 110;
 	public static final int STRING_SKIN_CUSTOMIZE_ITEM10 = 119;
+	public static final int STRING_RANKING1_NAME = 120;
+	public static final int STRING_RANKING10_NAME = 129;
 	public static final int STRING_COURSE1_TITLE = 150;
 	public static final int STRING_COURSE2_TITLE = 151;
 	public static final int STRING_COURSE3_TITLE = 152;
@@ -492,6 +494,12 @@ public class SkinProperty {
 
 	public static final int NUMBER_SONGGAUGE_TOTAL = 368;
 
+	public static final int NUMBER_RANKING1_EXSCORE = 380;
+	public static final int NUMBER_RANKING10_EXSCORE = 389;
+	public static final int NUMBER_RANKING1_CLEAR = 390;
+	public static final int NUMBER_RANKING10_CLEAR = 399;
+
+	
 	public static final int VALUE_JUDGE_1P_DURATION = 525;
 	public static final int VALUE_JUDGE_2P_DURATION = 526;
 	public static final int VALUE_JUDGE_3P_DURATION = 527;
@@ -865,7 +873,8 @@ public class SkinProperty {
 	public static final int BUTTON_TARGET = 77;
 	public static final int BUTTON_GAUGEAUTOSHIFT = 78;
 	public static final int BUTTON_RIVAL = 79;
-	public static final int BUTTON_FAVORITTE = 90;
+	public static final int BUTTON_FAVORITTE_SONG = 89;
+	public static final int BUTTON_FAVORITTE_CHART = 90;
 	public static final int BUTTON_SKINSELECT_7KEY = 170;
 	public static final int BUTTON_SKINSELECT_5KEY = 171;
 	public static final int BUTTON_SKINSELECT_14KEY = 172;

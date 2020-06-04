@@ -17,7 +17,9 @@ import bms.player.beatoraja.MainController.IRStatus;
 import bms.player.beatoraja.PlayerResource.PlayMode;
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
 import bms.player.beatoraja.ir.IRConnection;
+import bms.player.beatoraja.ir.IRCourseData;
 import bms.player.beatoraja.ir.IRResponse;
+import bms.player.beatoraja.ir.RankingData;
 import bms.player.beatoraja.select.MusicSelector;
 import bms.player.beatoraja.skin.SkinType;
 
@@ -84,7 +86,9 @@ public class CourseResult extends AbstractResult {
 		state = STATE_OFFLINE;
 		final PlayerResource resource = main.getPlayerResource();
 		final PlayerConfig config = resource.getPlayerConfig();
-		final IRScoreData newscore = getNewScore();
+		final ScoreData newscore = getNewScore();
+
+		ranking = resource.getRankingData() != null && resource.getCourseBMSModels() == null ? resource.getRankingData() : new RankingData();
 
 		final IRStatus[] ir = main.getIRStatus();
 		if (ir.length > 0 && resource.getPlayMode() == PlayMode.PLAY) {
@@ -140,22 +144,9 @@ public class CourseResult extends AbstractResult {
                 	if(irsend > 0) {
                         main.switchTimer(succeed ? TIMER_IR_CONNECT_SUCCESS : TIMER_IR_CONNECT_FAIL, true);
 
-						IRResponse<IRScoreData[]> response = ir[0].connection.getCoursePlayData(null, resource.getCourseData(), lnmode);
+                        IRResponse<bms.player.beatoraja.ir.IRScoreData[]> response = ir[0].connection.getCoursePlayData(null, new IRCourseData(resource.getCourseData(), lnmode));
 						if(response.isSucceeded()) {
-							IRScoreData[] scores = response.getData();
-							irtotal = scores.length;
-
-							for(int i = 0;i < scores.length;i++) {
-								if(irrank == 0 && scores[i].getExscore() <= resource.getScoreData().getExscore() ) {
-									irrank = i + 1;
-								}
-								if(irprevrank == 0 && scores[i].getExscore() <= oldscore.getExscore() ) {
-									irprevrank = i + 1;
-									if(irrank == 0) {
-										irrank = irprevrank;
-									}
-								}
-							}
+                    		ranking.updateScore(response.getData(), newscore.getExscore() > oldscore.getExscore() ? newscore : oldscore);                    		
 							Logger.getGlobal().warning("IRからのスコア取得成功 : " + response.getMessage());
 						} else {
 							Logger.getGlobal().warning("IRからのスコア取得失敗 : " + response.getMessage());
@@ -261,7 +252,7 @@ public class CourseResult extends AbstractResult {
 		final PlayerResource resource = main.getPlayerResource();
 		final PlayerConfig config = resource.getPlayerConfig();
 		BMSModel[] models = resource.getCourseBMSModels();
-		final IRScoreData newscore = getNewScore();
+		final ScoreData newscore = getNewScore();
 		if (newscore == null) {
 			return;
 		}
@@ -279,9 +270,9 @@ public class CourseResult extends AbstractResult {
 				&& (!dp || (config.getRandom2() == 1 && config.getDoubleoption() == 1))) {
 			random = 1;
 		}
-		final IRScoreData score = main.getPlayDataAccessor().readScoreData(models,
+		final ScoreData score = main.getPlayDataAccessor().readScoreData(models,
 				config.getLnmode(), random, resource.getConstraint());
-		oldscore = score != null ? score : new IRScoreData();
+		oldscore = score != null ? score : new ScoreData();
 
 		getScoreDataProperty().setTargetScore(oldscore.getExscore(), resource.getRivalScoreData(),
 				Arrays.asList(resource.getCourseData().getSong()).stream().mapToInt(sd -> sd.getNotes()).sum());
@@ -296,7 +287,7 @@ public class CourseResult extends AbstractResult {
 
 	public int getJudgeCount(int judge, boolean fast) {
 		final PlayerResource resource = main.getPlayerResource();
-		IRScoreData score = resource.getCourseScoreData();
+		ScoreData score = resource.getCourseScoreData();
 		if (score != null) {
 			switch (judge) {
 				case 0:
@@ -359,7 +350,7 @@ public class CourseResult extends AbstractResult {
 		}
 	}
 	
-	public IRScoreData getNewScore() {
+	public ScoreData getNewScore() {
 		return main.getPlayerResource().getCourseScoreData();
 	}
 
@@ -371,10 +362,10 @@ public class CourseResult extends AbstractResult {
 		public final IRConnection ir;
 		public final CourseData course;
 		public final int lnmode;
-		public final IRScoreData score;
+		public final ScoreData score;
 		public int retry = 0;
 		
-		public IRSendStatus(IRConnection ir, CourseData course, int lnmode, IRScoreData score) {
+		public IRSendStatus(IRConnection ir, CourseData course, int lnmode, ScoreData score) {
 			this.ir = ir;
 			this.course = course;
 			this.lnmode = lnmode;
@@ -383,7 +374,7 @@ public class CourseResult extends AbstractResult {
 		
 		public boolean send() {
 			Logger.getGlobal().info("IRへスコア送信中 : " + course.getName());
-            IRResponse<Object> send1 = ir.sendCoursePlayData(course, lnmode, score);
+            IRResponse<Object> send1 = ir.sendCoursePlayData(new IRCourseData(course, lnmode), new bms.player.beatoraja.ir.IRScoreData(score));
             if(send1.isSucceeded()) {
                 Logger.getGlobal().info("IRスコア送信完了 : " + course.getName());
                 retry = -255;

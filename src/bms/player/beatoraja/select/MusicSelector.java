@@ -3,24 +3,30 @@ package bms.player.beatoraja.select;
 import static bms.player.beatoraja.skin.SkinProperty.*;
 
 import java.nio.file.DirectoryStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.io.File;
+import java.lang.StringBuilder;
 import java.nio.file.*;
 import java.util.logging.Logger;
 
+import bms.player.beatoraja.ir.IRPlayerData;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.*;
 import com.badlogic.gdx.utils.ObjectMap.Keys;
 
+import bms.model.BMSDecoder;
 import bms.model.Mode;
 import bms.player.beatoraja.*;
-import bms.player.beatoraja.MainController.IRStatus;
+import bms.player.beatoraja.CourseData.CourseDataConstraint;
 import bms.player.beatoraja.PlayerResource.PlayMode;
 import bms.player.beatoraja.ScoreDatabaseAccessor.ScoreDataCollector;
 import bms.player.beatoraja.external.ScoreDataImporter;
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
 import bms.player.beatoraja.input.KeyCommand;
 import bms.player.beatoraja.ir.IRResponse;
+import bms.player.beatoraja.ir.RankingData;
 import bms.player.beatoraja.select.bar.*;
 import bms.player.beatoraja.skin.SkinType;
 import bms.player.beatoraja.song.SongData;
@@ -83,8 +89,8 @@ public class MusicSelector extends MainState {
 	private ScoreDataCache scorecache;
 	private ScoreDataCache rivalcache;
 	
-	private IRAccessStatus currentir;
-	private IRAccessStatusCache ircache = new IRAccessStatusCache();
+	private RankingData currentir;
+	private RankingDataCache ircache = new RankingDataCache();
 
 	private ObjectMap<PlayerInformation, ScoreDataCache> rivalcaches = new ObjectMap<PlayerInformation, ScoreDataCache>();
 	private PlayerInformation rival;
@@ -118,7 +124,7 @@ public class MusicSelector extends MainState {
 
 		scorecache = new ScoreDataCache() {
 			@Override
-			protected IRScoreData readScoreDatasFromSource(SongData song, int lnmode) {
+			protected ScoreData readScoreDatasFromSource(SongData song, int lnmode) {
 				return pda.readScoreData(song.getSha256(), song.hasUndefinedLongNote(), lnmode);
 			}
 
@@ -132,10 +138,10 @@ public class MusicSelector extends MainState {
 			if(main.getIRStatus()[0].config.isImportscore()) {
 				main.getIRStatus()[0].config.setImportscore(false);
 				try {
-					IRResponse<IRScoreData[]> scores = main.getIRStatus()[0].connection.getPlayData(null, null);
+					IRResponse<bms.player.beatoraja.ir.IRScoreData[]> scores = main.getIRStatus()[0].connection.getPlayData(null, null);
 					if(scores.isSucceeded()) {
 						ScoreDataImporter scoreimport = new ScoreDataImporter(new ScoreDatabaseAccessor(main.getConfig().getPlayerpath() + File.separatorChar + main.getConfig().getPlayername() + File.separatorChar + "score.db"));
-						scoreimport.importScores(scores.getData(), main.getIRStatus()[0].config.getIrname());
+						scoreimport.importScores(convert(scores.getData()), main.getIRStatus()[0].config.getIrname());
 
 						Logger.getGlobal().info("IRからのスコアインポート完了");
 					} else {
@@ -146,7 +152,7 @@ public class MusicSelector extends MainState {
 				}
 			}
 			
-			IRResponse<PlayerInformation[]> response = main.getIRStatus()[0].connection.getRivals();
+			IRResponse<IRPlayerData[]> response = main.getIRStatus()[0].connection.getRivals();
 			if(response.isSucceeded()) {
 				try {
 					
@@ -158,12 +164,16 @@ public class MusicSelector extends MainState {
 
 					// ライバルキャッシュ作成
 					if(main.getIRStatus()[0].config.isImportrival()) {
-						for(PlayerInformation rival : response.getData()) {
+						for(IRPlayerData irplayer : response.getData()) {
+							final PlayerInformation rival = new PlayerInformation();
+							rival.setId(irplayer.id);
+							rival.setName(irplayer.name);
+							rival.setRank(irplayer.rank);
 							final ScoreDatabaseAccessor scoredb = new ScoreDatabaseAccessor("rival/" + main.getIRStatus()[0].config.getIrname() + rival.getId() + ".db");
 							rivalcaches.put(rival,  new ScoreDataCache() {
 
 								@Override
-								protected IRScoreData readScoreDatasFromSource(SongData song, int lnmode) {
+								protected ScoreData readScoreDatasFromSource(SongData song, int lnmode) {
 									return scoredb.getScoreData(song.getSha256(), song.hasUndefinedLongNote() ? lnmode : 0);
 								}
 
@@ -174,9 +184,9 @@ public class MusicSelector extends MainState {
 							new Thread(() -> {
 								scoredb.createTable();
 								scoredb.setInformation(rival);
-								IRResponse<IRScoreData[]> scores = main.getIRStatus()[0].connection.getPlayData(rival.getId(), null);
+								IRResponse<bms.player.beatoraja.ir.IRScoreData[]> scores = main.getIRStatus()[0].connection.getPlayData(rival.getId(), null);
 								if(scores.isSucceeded()) {
-									scoredb.setScoreData(scores.getData());
+									scoredb.setScoreData(convert(scores.getData()));
 									Logger.getGlobal().info("IRからのライバルスコア取得完了 : " + rival.getName());
 								} else {
 									Logger.getGlobal().warning("IRからのライバルスコア取得失敗 : " + scores.getMessage());
@@ -205,7 +215,7 @@ public class MusicSelector extends MainState {
 									rivalcaches.put(info,  new ScoreDataCache() {
 
 										@Override
-										protected IRScoreData readScoreDatasFromSource(SongData song, int lnmode) {
+										protected ScoreData readScoreDatasFromSource(SongData song, int lnmode) {
 											return scoredb.getScoreData(song.getSha256(), song.hasUndefinedLongNote() ? lnmode : 0);
 										}
 
@@ -237,6 +247,41 @@ public class MusicSelector extends MainState {
 		if (!songUpdated && main.getPlayerResource().getConfig().isUpdatesong()) {
 			main.updateSong(null);
 		}
+	}
+	
+	private ScoreData[] convert(bms.player.beatoraja.ir.IRScoreData[] irscores) {
+		ScoreData[] scores = new ScoreData[irscores.length];
+		for(int i = 0;i < scores.length;i++) {
+			final ScoreData score = new ScoreData();
+			final bms.player.beatoraja.ir.IRScoreData irscore = irscores[i];
+			score.setSha256(irscore.sha256);
+			score.setPlayer(irscore.player);
+			score.setClear(irscore.clear.id); 
+			score.setDate(irscore.date);
+			score.setEpg(irscore.epg);
+			score.setLpg(irscore.lpg);
+			score.setEgr(irscore.egr);
+			score.setLgr(irscore.lgr);
+			score.setEgd(irscore.egd);
+			score.setLgd(irscore.lgd);
+			score.setEbd(irscore.ebd);
+			score.setLbd(irscore.lbd);
+			score.setEpr(irscore.epr);
+			score.setLpr(irscore.lpr);
+			score.setEms(irscore.ems);
+			score.setLms(irscore.lms);
+			score.setCombo(irscore.maxcombo);
+			score.setNotes(irscore.notes);
+			score.setPassnotes(irscore.passnotes != 0 ? irscore.notes : irscore.passnotes);
+			score.setMinbp(irscore.minbp);
+			score.setOption(irscore.option);
+			score.setAssist(irscore.assist);
+			score.setGauge(irscore.gauge);
+			score.setDeviceType(irscore.deviceType);
+			
+			scores[i] = score;
+		}
+		return scores;
 	}
 
 	public void setRival(PlayerInformation rival) {
@@ -327,7 +372,7 @@ public class MusicSelector extends MainState {
 		resource.setCourseData(current instanceof GradeBar ? ((GradeBar) current).getCourseData() : null);
 
 		// preview music
-		if (current instanceof SongBar) {
+		if (current instanceof SongBar && main.getConfig().isPlayPreview()) {
 			final SongData song = main.getPlayerResource().getSongdata();
 			if (song != preview.getSongData() && main.getNowTime() > main.getTimer(TIMER_SONGBAR_CHANGE) + previewDuration
 					&& play == null) {
@@ -347,23 +392,33 @@ public class MusicSelector extends MainState {
 			showNoteGraph = true;
 		}
 		// get ir ranking
-		if (current instanceof SongBar && ((SongBar) current).existsSong() && play == null) {
-			if (currentRankingDuration != -1 && main.getNowTime() > main.getTimer(TIMER_SONGBAR_CHANGE) + currentRankingDuration) {
-				currentRankingDuration = -1;
+		if (currentRankingDuration != -1 && main.getNowTime() > main.getTimer(TIMER_SONGBAR_CHANGE) + currentRankingDuration) {
+			currentRankingDuration = -1;
+			if (current instanceof SongBar && ((SongBar) current).existsSong() && play == null) {
 				SongData song = ((SongBar) current).getSongData();
-				IRAccessStatus irc = ircache.get(song, config.getLnmode());
+				RankingData irc = ircache.get(song, config.getLnmode());
 				if(irc == null) {
-					irc = new IRAccessStatus();
+					irc = new RankingData();
 		            ircache.put(song, config.getLnmode(), irc);
 				}
 				irc.load(this, song);
 	            currentir = irc;
 			}				
+			if (current instanceof GradeBar && ((GradeBar) current).existsAllSongs() && play == null) {
+				CourseData course = ((GradeBar) current).getCourseData();
+				RankingData irc = ircache.get(course, config.getLnmode());
+				if(irc == null) {
+					irc = new RankingData();
+		            ircache.put(course, config.getLnmode(), irc);
+				}
+				irc.load(this, course);
+	            currentir = irc;
+			}				
 		}
 		final int irstate = currentir != null ? currentir.getState() : -1;
-		main.switchTimer(TIMER_IR_CONNECT_BEGIN, irstate == IRAccessStatus.ACCESS);
-		main.switchTimer(TIMER_IR_CONNECT_SUCCESS, irstate == IRAccessStatus.FINISH);
-		main.switchTimer(TIMER_IR_CONNECT_FAIL, irstate == IRAccessStatus.FAIL);
+		main.switchTimer(TIMER_IR_CONNECT_BEGIN, irstate == RankingData.ACCESS);
+		main.switchTimer(TIMER_IR_CONNECT_SUCCESS, irstate == RankingData.FINISH);
+		main.switchTimer(TIMER_IR_CONNECT_FAIL, irstate == RankingData.FAIL);
 
 		if (play != null) {
 			if (current instanceof SongBar) {
@@ -390,6 +445,12 @@ public class MusicSelector extends MainState {
 								}
 							}
 						}
+						if(main.getIRStatus().length > 0 && currentir == null) {
+							currentir = new RankingData();
+				            ircache.put(song, config.getLnmode(), currentir);
+						}
+						resource.setRankingData(currentir);
+						
 						playedsong = song;
 						changeState(MainStateType.DECIDE);
 					} else {
@@ -558,6 +619,13 @@ public class MusicSelector extends MainState {
 			resource.setCourseData(course.getCourseData());
 			resource.setBMSFile(files[0], mode);
 			playedcourse = course.getCourseData();
+			
+			if(main.getIRStatus().length > 0 && currentir == null) {
+				currentir = new RankingData();
+	            ircache.put(course.getCourseData(), config.getLnmode(), currentir);
+			}
+			resource.setRankingData(currentir);
+
 			changeState(MainStateType.DECIDE);
 		} else {
 			main.getMessageRenderer().addMessage("Failed to loading Course : Some of songs not found", 1200, Color.RED, 1);
@@ -691,6 +759,12 @@ public class MusicSelector extends MainState {
 		case BUTTON_RIVAL:
 			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_RIVAL : MusicSelectCommand.PREV_RIVAL);
 			break;
+		case BUTTON_FAVORITTE_SONG:
+			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_FAVORITE_SONG : MusicSelectCommand.PREV_FAVORITE_SONG);
+			break;
+		case BUTTON_FAVORITTE_CHART:
+			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_FAVORITE_CHART : MusicSelectCommand.PREV_FAVORITE_CHART);
+			break;
 		case BUTTON_OPEN_IR_WEBSITE:
 			execute(MusicSelectCommand.OPEN_RANKING_ON_IR);
 			break;
@@ -737,9 +811,17 @@ public class MusicSelector extends MainState {
 		showNoteGraph = false;
 
 		final Bar current = bar.getSelected();
-		if(main.getIRStatus().length > 0 && current instanceof SongBar && ((SongBar) current).existsSong()) {
-			currentir = ircache.get(((SongBar) current).getSongData(), config.getLnmode());
-			currentRankingDuration = (currentir != null ? Math.max(rankingReloadDuration - (System.currentTimeMillis() - currentir.lastUpdateTime) ,0) : 0) + rankingDuration;
+		if(main.getIRStatus().length > 0) {
+			if(current instanceof SongBar && ((SongBar) current).existsSong()) {
+				currentir = ircache.get(((SongBar) current).getSongData(), config.getLnmode());
+				currentRankingDuration = (currentir != null ? Math.max(rankingReloadDuration - (System.currentTimeMillis() - currentir.getLastUpdateTime()) ,0) : 0) + rankingDuration;
+			} else if(current instanceof GradeBar && ((GradeBar) current).existsAllSongs()) {
+				currentir = ircache.get(((GradeBar) current).getCourseData(), config.getLnmode());
+				currentRankingDuration = (currentir != null ? Math.max(rankingReloadDuration - (System.currentTimeMillis() - currentir.getLastUpdateTime()) ,0) : 0) + rankingDuration;
+			} else {
+				currentir = null;
+				currentRankingDuration = -1;			
+			}
 		} else {
 			currentir = null;
 			currentRankingDuration = -1;			
@@ -786,7 +868,7 @@ public class MusicSelector extends MainState {
 		return pc;
 	}
 	
-	public IRAccessStatus getCurrentIRStatus() {
+	public RankingData getCurrentRankingData() {
 		return currentir;
 	}
 	
@@ -798,17 +880,20 @@ public class MusicSelector extends MainState {
 	 *
 	 * @author exch
 	 */
-	public static class IRAccessStatusCache {
+	public static class RankingDataCache {
 
 	    /**
 	     * IRアクセスデータのキャッシュ
 	     */
-	    private ObjectMap<String, IRAccessStatus>[] scorecache;
+	    private ObjectMap<String, RankingData>[] scorecache;
+	    private ObjectMap<String, RankingData>[] cscorecache;
 
-	    public IRAccessStatusCache() {
+	    public RankingDataCache() {
 	        scorecache = new ObjectMap[4];
+	        cscorecache = new ObjectMap[4];
 	        for (int i = 0; i < scorecache.length; i++) {
 	            scorecache[i] = new ObjectMap(2000);
+	            cscorecache[i] = new ObjectMap(100);
 	        }
 	    }
 
@@ -818,7 +903,7 @@ public class MusicSelector extends MainState {
 	     * @param lnmode LN MODE
 	     * @return IRアクセスデータ。存在しない場合はnull
 	     */
-	    public IRAccessStatus get(SongData song, int lnmode) {
+	    public RankingData get(SongData song, int lnmode) {
 	        final int cacheindex = song.hasUndefinedLongNote() ? lnmode : 3;
 	        if (scorecache[cacheindex].containsKey(song.getSha256())) {
 	            return scorecache[cacheindex].get(song.getSha256());
@@ -826,95 +911,56 @@ public class MusicSelector extends MainState {
 	        return null;
 	    }
 
-	    public void put(SongData song, int lnmode, IRAccessStatus iras) {
+	    public RankingData get(CourseData course, int lnmode) {
+	        int cacheindex = 3;
+	        for(SongData song : course.getSong()) {
+	        	if(song.hasUndefinedLongNote()) {
+	        		cacheindex = lnmode;
+	        	}
+	        }
+	        String hash = createCourseHash(course);
+	        if (cscorecache[cacheindex].containsKey(hash)) {
+	            return cscorecache[cacheindex].get(hash);
+	        }
+	        return null;
+	    }
+
+	    public void put(SongData song, int lnmode, RankingData iras) {
 	        final int cacheindex = song.hasUndefinedLongNote() ? lnmode : 3;
 	        scorecache[cacheindex].put(song.getSha256(), iras);
 	    }
-	}
-	
-	/**
-	 * IRアクセスデータ
-	 *
-	 * @author exch
-	 */
-	public static class IRAccessStatus {
-		/**
-		 * 選択されている楽曲の現在のIR順位
-		 */
-		private int irrank;
-		/**
-		 * IR総プレイ数
-		 */
-		private int irtotal;
-
-		private int[] lamps = new int[11];
-		
-		private IRScoreData[] scores;
-		
-		private int state;
-		public static final int ACCESS = 1;
-		public static final int FINISH = 2;
-		public static final int FAIL = 3;
-		
-		private long lastUpdateTime;
-		
-		public void load(MainState selector, SongData song) {
-			Thread irprocess = new Thread(() -> {
-				state = ACCESS;
-				final IRStatus[] ir = selector.main.getIRStatus();
-		        IRResponse<IRScoreData[]> response = ir[0].connection.getPlayData(null, song);
-		        if(response.isSucceeded()) {
-		        	updateScore(response.getData(), selector.getScoreDataProperty().getScoreData());
-		        	
-		            Logger.getGlobal().warning("IRからのスコア取得成功 : " + response.getMessage());
-					state = FINISH;
-		        } else {
-		            Logger.getGlobal().warning("IRからのスコア取得失敗 : " + response.getMessage());
-					state = FAIL;
-		        }
-		        lastUpdateTime = System.currentTimeMillis();
-			});
-			irprocess.start();
-
-		}
-		
-		public void updateScore(IRScoreData[] scores, IRScoreData myscore) {
-			if(scores == null) {
-				return;
+	    
+	    public void put(CourseData course, int lnmode, RankingData iras) {
+	        int cacheindex = 3;
+	        for(SongData song : course.getSong()) {
+	        	if(song.hasUndefinedLongNote()) {
+	        		cacheindex = lnmode;
+	        	}
+	        }
+	        cscorecache[cacheindex].put(createCourseHash(course), iras);
+	    }
+	    
+		private String createCourseHash(CourseData course) {
+			StringBuilder sb = new StringBuilder();
+			for(SongData song : course.getSong()) {
+				if(song.getSha256() != null && song.getSha256().length() == 64) {
+					sb.append(song.getSha256());
+				} else {
+					return null;
+				}
 			}
-			this.scores = scores;
-            irtotal = scores.length;
-
-            for(int i = 0;i < scores.length;i++) {
-                if(myscore != null && irrank == 0 && scores[i].getExscore() <=  myscore.getExscore()) {
-                	irrank = i + 1;
-                }
-                lamps[scores[i].getClear()]++;
-            }	            	
-		}
-		
-		public int getRank() {
-			return irrank;
-		}
-		
-		public int getTotalPlayer() {
-			return irtotal;
-		}
-
-		public IRScoreData[] getScores() {
-			return scores;
-		}
-		
-		public int getClearCount(int clearType) {
-			return lamps[clearType];
-		}
-		
-		public int getState() {
-			return state;
-		}
-		
-		public long getLastUpdateTime() {
-			return lastUpdateTime;
+			for(CourseDataConstraint constraint : course.getConstraint()) {
+				sb.append(constraint.name);
+			}
+			try {
+				MessageDigest md = MessageDigest.getInstance("sha-256");
+				md.update(sb.toString().getBytes());
+				return BMSDecoder.convertHexString(md.digest());
+			} catch (NoSuchAlgorithmException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return null;
 		}
 	}
 }

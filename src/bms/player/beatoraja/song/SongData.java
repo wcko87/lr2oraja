@@ -35,7 +35,8 @@ public class SongData implements Validatable, IpfsInformation {
 
 	public static final int FAVORITE_SONG = 1;
 	public static final int FAVORITE_CHART = 2;
-	public static final int INVISIBLE_CHART = 4;
+	public static final int INVISIBLE_SONG = 4;
+	public static final int INVISIBLE_CHART = 8;
 
 	/**
 	 * 楽曲タイトル
@@ -383,6 +384,14 @@ public class SongData implements Validatable, IpfsInformation {
 
 	public boolean hasLongNote() {
 		return (feature & FEATURE_LONGNOTE) != 0;
+	}
+
+	public boolean hasChargeNote() {
+		return (feature & FEATURE_CHARGENOTE) != 0;
+	}
+
+	public boolean hasHellChargeNote() {
+		return (feature & FEATURE_HELLCHARGENOTE) != 0;
 	}
 
 	public boolean hasAnyLongNote() {

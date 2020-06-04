@@ -19,11 +19,14 @@ import java.util.stream.Collectors;
 import bms.player.beatoraja.PlayConfig;
 import bms.player.beatoraja.PlayerConfig;
 import bms.player.beatoraja.PlayerInformation;
+import bms.player.beatoraja.ir.IRChartData;
 import bms.player.beatoraja.ir.IRConnection;
+import bms.player.beatoraja.ir.IRCourseData;
 import bms.player.beatoraja.select.bar.*;
 import bms.player.beatoraja.result.AbstractResult;
 import bms.player.beatoraja.song.SongData;
 
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.utils.Queue;
 
 public enum MusicSelectCommand {
@@ -421,10 +424,10 @@ public enum MusicSelectCommand {
             Bar current = selector.getBarRender().getSelected();
             String url = null;
             if(current instanceof SongBar) {
-                url = ir.getSongURL(((SongBar) current).getSongData());
+                url = ir.getSongURL(new IRChartData(((SongBar) current).getSongData()));
             }
             if(current instanceof GradeBar) {
-                url = ir.getCourseURL(((GradeBar) current).getCourseData());
+                url = ir.getCourseURL(new IRCourseData(((GradeBar) current).getCourseData()));
             }
             if (url != null) {
                 try {
@@ -511,6 +514,11 @@ public enum MusicSelectCommand {
 				selector.main.updateSong(((FolderBar) selected).getFolderData().getPath());
 			} else if(selected instanceof TableBar) {
 				selector.main.updateTable((TableBar) selected);
+			} else if(selected instanceof SongBar) {
+				final String path = ((SongBar) selected).getSongData().getPath();
+				if(path != null) {
+					selector.main.updateSong(Paths.get(path).getParent().toString());
+				}
 			}
 		}
     },
@@ -674,6 +682,176 @@ public enum MusicSelectCommand {
             asr[3] = (asr[3] - 1 + AbstractResult.ReplayAutoSaveConstraint.values().length) % AbstractResult.ReplayAutoSaveConstraint.values().length;
             selector.main.getConfig().setAutoSaveReplay(asr);
             selector.play(SOUND_OPTIONCHANGE);
+        }
+    },
+    /**
+     * 次の楽曲FAVORITE属性へ遷移
+     */
+    NEXT_FAVORITE_SONG {
+        @Override
+        public void execute(MusicSelector selector) {
+			if(selector.getSelectedBar() instanceof SongBar) {
+				final SongData sd = ((SongBar) selector.getSelectedBar()).getSongData();
+
+				if(sd != null) {
+					int type = 2;
+					String message = "Added to Invisible Song";
+					if((sd.getFavorite() & (SongData.FAVORITE_SONG | SongData.INVISIBLE_SONG)) == 0) {
+						type = 1;
+						message = "Added to Favorite Song";
+					} else if((sd.getFavorite() & SongData.INVISIBLE_SONG) != 0) {
+						type = 0;
+						message = "Removed from Invisible Song";
+					}
+					SongData[] songs = selector.getSongDatabase().getSongDatas("folder", sd.getFolder());
+					for(SongData song : songs) {
+						int favorite = song.getFavorite();
+						switch (type) {
+						case 0:
+							favorite &= 0xffffffff ^ (SongData.FAVORITE_SONG | SongData.INVISIBLE_SONG);
+							break;
+						case 1:
+							favorite |= SongData.FAVORITE_SONG;
+							favorite &= 0xffffffff ^ SongData.INVISIBLE_SONG;
+							break;
+						case 2:
+							favorite |= SongData.INVISIBLE_SONG;
+							favorite &= 0xffffffff ^ SongData.FAVORITE_SONG;
+							break;
+						}
+						song.setFavorite(favorite);
+					}
+					selector.getSongDatabase().setSongDatas(songs);
+					selector.main.getMessageRenderer().addMessage(message, 1200, Color.GREEN, 1);
+		            selector.play(SOUND_OPTIONCHANGE);
+				}
+			}
+        }
+    },
+    /**
+     * 前の楽曲FAVORITE属性へ遷移
+     */
+    PREV_FAVORITE_SONG {
+        @Override
+        public void execute(MusicSelector selector) {
+			if(selector.getSelectedBar() instanceof SongBar) {
+				final SongData sd = ((SongBar) selector.getSelectedBar()).getSongData();
+
+				if(sd != null) {
+					int type = 0;
+					String message = "Removed from Favorite Song";
+					if((sd.getFavorite() & (SongData.FAVORITE_SONG | SongData.INVISIBLE_SONG)) == 0) {
+						type = 2;
+						message = "Added to Invisible Song";
+					} else if((sd.getFavorite() & SongData.INVISIBLE_SONG) != 0) {
+						type = 1;
+						message = "Added to Favorite Song";
+					}
+					SongData[] songs = selector.getSongDatabase().getSongDatas("folder", sd.getFolder());
+					for(SongData song : songs) {
+						int favorite = song.getFavorite();
+						switch (type) {
+						case 0:
+							favorite &= 0xffffffff ^ (SongData.FAVORITE_SONG | SongData.INVISIBLE_SONG);
+							break;
+						case 1:
+							favorite |= SongData.FAVORITE_SONG;
+							favorite &= 0xffffffff ^ SongData.INVISIBLE_SONG;
+							break;
+						case 2:
+							favorite |= SongData.INVISIBLE_SONG;
+							favorite &= 0xffffffff ^ SongData.FAVORITE_SONG;
+							break;
+						}
+						song.setFavorite(favorite);
+					}
+					selector.getSongDatabase().setSongDatas(songs);
+					selector.main.getMessageRenderer().addMessage(message, 1200, Color.GREEN, 1);
+		            selector.play(SOUND_OPTIONCHANGE);
+				}
+			}
+        }
+    },
+    /**
+     * 次の譜面FAVORITE属性へ遷移
+     */
+    NEXT_FAVORITE_CHART {
+        @Override
+        public void execute(MusicSelector selector) {
+			if(selector.getSelectedBar() instanceof SongBar) {
+				final SongData sd = ((SongBar) selector.getSelectedBar()).getSongData();
+
+				if(sd != null) {
+					int type = 2;
+					String message = "Added to Invisible Chart";
+					if((sd.getFavorite() & (SongData.FAVORITE_CHART | SongData.INVISIBLE_CHART)) == 0) {
+						type = 1;
+						message = "Added to Favorite Chart";
+					} else if((sd.getFavorite() & SongData.INVISIBLE_CHART) != 0) {
+						type = 0;
+						message = "Removed from Invisible Chart";
+					}
+					int favorite = sd.getFavorite();
+					switch (type) {
+					case 0:
+						favorite &= 0xffffffff ^ (SongData.FAVORITE_CHART | SongData.INVISIBLE_CHART);
+						break;
+					case 1:
+						favorite |= SongData.FAVORITE_CHART;
+						favorite &= 0xffffffff ^ SongData.INVISIBLE_CHART;
+						break;
+					case 2:
+						favorite |= SongData.INVISIBLE_CHART;
+						favorite &= 0xffffffff ^ SongData.FAVORITE_CHART;
+						break;
+					}
+					sd.setFavorite(favorite);
+					selector.getSongDatabase().setSongDatas(new SongData[]{sd});
+					selector.main.getMessageRenderer().addMessage(message, 1200, Color.GREEN, 1);
+		            selector.play(SOUND_OPTIONCHANGE);
+				}
+			}
+        }
+    },
+    /**
+     * 前の譜面FAVORITE属性へ遷移
+     */
+    PREV_FAVORITE_CHART {
+        @Override
+        public void execute(MusicSelector selector) {
+			if(selector.getSelectedBar() instanceof SongBar) {
+				final SongData sd = ((SongBar) selector.getSelectedBar()).getSongData();
+
+				if(sd != null) {
+					int type = 0;
+					String message = "Removed from Favorite Chart";
+					if((sd.getFavorite() & (SongData.FAVORITE_CHART | SongData.INVISIBLE_CHART)) == 0) {
+						type = 2;
+						message = "Added to Invisible Chart";
+					} else if((sd.getFavorite() & SongData.INVISIBLE_CHART) != 0) {
+						type = 1;
+						message = "Added to Favorite Chart";
+					}
+					int favorite = sd.getFavorite();
+					switch (type) {
+					case 0:
+						favorite &= 0xffffffff ^ (SongData.FAVORITE_CHART | SongData.INVISIBLE_CHART);
+						break;
+					case 1:
+						favorite |= SongData.FAVORITE_CHART;
+						favorite &= 0xffffffff ^ SongData.INVISIBLE_CHART;
+						break;
+					case 2:
+						favorite |= SongData.INVISIBLE_CHART;
+						favorite &= 0xffffffff ^ SongData.FAVORITE_CHART;
+						break;
+					}
+					sd.setFavorite(favorite);
+					selector.getSongDatabase().setSongDatas(new SongData[]{sd});
+					selector.main.getMessageRenderer().addMessage(message, 1200, Color.GREEN, 1);
+		            selector.play(SOUND_OPTIONCHANGE);
+				}
+			}
         }
     },
     /**

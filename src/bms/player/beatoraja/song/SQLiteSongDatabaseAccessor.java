@@ -32,7 +32,6 @@ public class SQLiteSongDatabaseAccessor implements SongDatabaseAccessor {
 	private SQLiteDataSource ds;
 
 	private final Path root;
-	private String[] bmsroot;
 
 	private final ResultSetHandler<List<SongData>> songhandler = new BeanListHandler<SongData>(SongData.class);
 	private final ResultSetHandler<List<FolderData>> folderhandler = new BeanListHandler<FolderData>(FolderData.class);
@@ -51,7 +50,6 @@ public class SQLiteSongDatabaseAccessor implements SongDatabaseAccessor {
 		ds.setUrl("jdbc:sqlite:" + filepath);
 		qr = new QueryRunner(ds);
 		root = Paths.get(".");
-		this.bmsroot = bmsroot;
 		createTable();
 	}
 	
@@ -71,19 +69,36 @@ public class SQLiteSongDatabaseAccessor implements SongDatabaseAccessor {
 						+ "[subtitle] TEXT," + "[genre] TEXT," + "[artist] TEXT," + "[subartist] TEXT," + "[tag] TEXT,"
 						+ "[path] TEXT," + "[folder] TEXT," + "[stagefile] TEXT," + "[banner] TEXT," + "[backbmp] TEXT,"
 						+ "[preview] TEXT," + "[parent] TEXT," + "[level] INTEGER," + "[difficulty] INTEGER," + "[maxbpm] INTEGER,"
-						+ "[minbpm] INTEGER," + "[mode] INTEGER," + "[judge] INTEGER," + "[feature] INTEGER,"
+						+ "[minbpm] INTEGER," + "[length] INTEGER, " + "[mode] INTEGER," + "[judge] INTEGER," + "[feature] INTEGER,"
 						+ "[content] INTEGER," + "[date] INTEGER," + "[favorite] INTEGER," + "[notes] INTEGER,"
-						+ "[adddate] INTEGER,"  + "[charthash] TEXT," + "PRIMARY KEY(sha256, path));");
+						+ "[adddate] INTEGER," + "[charthash] TEXT," + "PRIMARY KEY(path));");
 			}
 
 			if(qr.query("SELECT * FROM sqlite_master WHERE name = 'song' AND sql LIKE '%preview%'", new MapListHandler()).size() == 0) {
-				qr.update("ALTER TABLE song ADD COLUMN preview [TEXT]");
+				qr.update("ALTER TABLE song ADD COLUMN [preview] TEXT");
 			}
 			if(qr.query("SELECT * FROM sqlite_master WHERE name = 'song' AND sql LIKE '%length%'", new MapListHandler()).size() == 0) {
-				qr.update("ALTER TABLE song ADD COLUMN length [INTEGER]");
+				qr.update("ALTER TABLE song ADD COLUMN [length] INTEGER");
 			}
 			if(qr.query("SELECT * FROM sqlite_master WHERE name = 'song' AND sql LIKE '%charthash%'", new MapListHandler()).size() == 0) {
-				qr.update("ALTER TABLE song ADD COLUMN charthash [TEXT]");
+				qr.update("ALTER TABLE song ADD COLUMN [charthash] TEXT");
+			}
+			if(qr.query("PRAGMA TABLE_INFO(song)", new MapListHandler()).stream().anyMatch(m -> m.get("name").equals("sha256") && (int)(m.get("pk")) == 1)) {
+				qr.update("ALTER TABLE song RENAME TO old_song");
+				qr.update("CREATE TABLE [song] ([md5] TEXT NOT NULL," + "[sha256] TEXT NOT NULL," + "[title] TEXT,"
+						+ "[subtitle] TEXT," + "[genre] TEXT," + "[artist] TEXT," + "[subartist] TEXT," + "[tag] TEXT,"
+						+ "[path] TEXT," + "[folder] TEXT," + "[stagefile] TEXT," + "[banner] TEXT," + "[backbmp] TEXT,"
+						+ "[preview] TEXT," + "[parent] TEXT," + "[level] INTEGER," + "[difficulty] INTEGER," + "[maxbpm] INTEGER,"
+						+ "[minbpm] INTEGER," + "[length] INTEGER," + "[mode] INTEGER," + "[judge] INTEGER," + "[feature] INTEGER,"
+						+ "[content] INTEGER," + "[date] INTEGER," + "[favorite] INTEGER," + "[notes] INTEGER,"
+						+ "[adddate] INTEGER," + "[charthash] TEXT," + "PRIMARY KEY(path));");
+				qr.update("INSERT INTO song SELECT "
+						+ "md5, sha256, title, subtitle, genre, artist, subartist, tag, path,"
+						+ "folder, stagefile, banner, backbmp, preview, parent, level, difficulty,"
+						+ "maxbpm, minbpm, length, mode, judge, feature, content,"
+						+ "date, favorite, notes, adddate, charthash "
+						+ "FROM old_song GROUP BY path HAVING MAX(adddate)");
+				qr.update("DROP TABLE old_song");
 			}
 
 			if (qr.query("SELECT * FROM sqlite_master WHERE name = ? and type='table';", new MapListHandler(), "folder")
@@ -258,8 +273,12 @@ public class SQLiteSongDatabaseAccessor implements SongDatabaseAccessor {
 	 * @param path
 	 *            LR2のルートパス
 	 */
-	public void updateSongDatas(String path, boolean updateAll, SongInformationAccessor info) {
-		SongDatabaseUpdater updater = new SongDatabaseUpdater(updateAll, info);
+	public void updateSongDatas(String path, String[] bmsroot, boolean updateAll, SongInformationAccessor info) {
+		if(bmsroot == null || bmsroot.length == 0) {
+			Logger.getGlobal().warning("楽曲ルートフォルダが登録されていません");
+			return;
+		}
+		SongDatabaseUpdater updater = new SongDatabaseUpdater(updateAll, bmsroot, info);
 		Path[] paths = null;
 		if (path == null) {
 			paths = new Path[bmsroot.length];
@@ -280,11 +299,13 @@ public class SQLiteSongDatabaseAccessor implements SongDatabaseAccessor {
 	class SongDatabaseUpdater {
 
 		private final boolean updateAll;
+		private final String[] bmsroot;
 
 		private SongInformationAccessor info;
 
-		public SongDatabaseUpdater(boolean updateAll, SongInformationAccessor info) {
+		public SongDatabaseUpdater(boolean updateAll, String[] bmsroot, SongInformationAccessor info) {
 			this.updateAll = updateAll;
+			this.bmsroot = bmsroot;
 			this.info = info;
 		}
 
@@ -331,7 +352,7 @@ public class SQLiteSongDatabaseAccessor implements SongDatabaseAccessor {
 				
 				Arrays.stream(paths).parallel().forEach((p) -> {
 					try {
-						BMSFolder folder = new BMSFolder(p);
+						BMSFolder folder = new BMSFolder(p, bmsroot);
 						folder.processDirectory(property);
 					} catch (IOException | SQLException e) {
 						Logger.getGlobal().severe("楽曲データベース更新時の例外:" + e.getMessage());
@@ -361,9 +382,11 @@ public class SQLiteSongDatabaseAccessor implements SongDatabaseAccessor {
 		private final List<Path> bmsfiles = new ArrayList<Path>();
 		private final List<BMSFolder> dirs = new ArrayList<BMSFolder>();
 		private String previewpath = null;
-		
-		public BMSFolder(Path path) {
+		private final String[] bmsroot;
+
+		public BMSFolder(Path path, String[] bmsroot) {
 			this.path = path;
+			this.bmsroot = bmsroot;
 		}
 		
 		private void processDirectory(SongDatabaseUpdaterProperty property)
@@ -375,7 +398,7 @@ public class SQLiteSongDatabaseAccessor implements SongDatabaseAccessor {
 			try (DirectoryStream<Path> paths = Files.newDirectoryStream(path)) {
 				for (Path p : paths) {
 					if(Files.isDirectory(p)) {
-						dirs.add(new BMSFolder(p));
+						dirs.add(new BMSFolder(p, bmsroot));
 					} else {
 						final String s = p.getFileName().toString().toLowerCase();
 						if (!txt && s.endsWith(".txt")) {

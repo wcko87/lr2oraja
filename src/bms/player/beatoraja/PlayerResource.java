@@ -10,6 +10,7 @@ import bms.model.*;
 import bms.player.beatoraja.CourseData.CourseDataConstraint;
 import bms.player.beatoraja.TableData.TableFolder;
 import bms.player.beatoraja.audio.AudioDriver;
+import bms.player.beatoraja.ir.RankingData;
 import bms.player.beatoraja.play.BMSPlayerRule;
 import bms.player.beatoraja.play.GrooveGauge;
 import bms.player.beatoraja.play.bga.BGAProcessor;
@@ -51,11 +52,13 @@ public class PlayerResource {
 	/**
 	 * スコア
 	 */
-	private IRScoreData score;
+	private ScoreData score;
 	/**
 	 * ライバルスコア
 	 */
 	private int rscore;
+	
+	private RankingData ranking;
 	/**
 	 * スコア更新するかどうか
 	 */
@@ -93,7 +96,7 @@ public class PlayerResource {
 	/**
 	 * コーススコア
 	 */
-	private IRScoreData cscore;
+	private ScoreData cscore;
 	/**
 	 * コンボ数。コースプレイ時の引継ぎに使用
 	 */
@@ -224,11 +227,11 @@ public class PlayerResource {
 		return bmsresource.mediaLoadFinished();
 	}
 
-	public IRScoreData getScoreData() {
+	public ScoreData getScoreData() {
 		return score;
 	}
 
-	public void setScoreData(IRScoreData score) {
+	public void setScoreData(ScoreData score) {
 		this.score = score;
 	}
 
@@ -238,6 +241,14 @@ public class PlayerResource {
 
 	public void setRivalScoreData(int rscore) {
 		this.rscore = rscore;
+	}
+	
+	public RankingData getRankingData() {
+		return ranking;
+	}
+	
+	public void setRankingData(RankingData ranking) {
+		this.ranking = ranking;
 	}
 	
 	public boolean setCourseBMSFiles(Path[] files) {
@@ -334,11 +345,11 @@ public class PlayerResource {
 		this.replay = replay;
 	}
 
-	public IRScoreData getCourseScoreData() {
+	public ScoreData getCourseScoreData() {
 		return cscore;
 	}
 
-	public void setCourseScoreData(IRScoreData cscore) {
+	public void setCourseScoreData(ScoreData cscore) {
 		this.cscore = cscore;
 	}
 

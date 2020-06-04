@@ -15,11 +15,12 @@ import static bms.player.beatoraja.skin.SkinProperty.*;
 
 import bms.model.Mode;
 import bms.player.beatoraja.CourseData;
-import bms.player.beatoraja.IRScoreData;
+import bms.player.beatoraja.ScoreData;
 import bms.player.beatoraja.MainState;
 import bms.player.beatoraja.ScoreDataProperty;
-import bms.player.beatoraja.IRScoreData.SongTrophy;
+import bms.player.beatoraja.ScoreData.SongTrophy;
 import bms.player.beatoraja.PlayerResource.PlayMode;
+import bms.player.beatoraja.ir.RankingData;
 import bms.player.beatoraja.play.BMSPlayer;
 import bms.player.beatoraja.play.JudgeManager;
 import bms.player.beatoraja.play.GrooveGauge.Gauge;
@@ -558,7 +559,7 @@ public class BooleanPropertyFactory {
 					(state) -> {
 						if(state instanceof MusicSelector) {
 							Bar current = ((MusicSelector) state).getSelectedBar();
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return (current instanceof SongBar || current instanceof GradeBar)
 									&& (score == null || (score != null && score.getClear() == NoPlay.id));
 						}
@@ -568,7 +569,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == Failed.id : false; 
 						}
 						return false;
@@ -577,7 +578,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == AssistEasy.id : false; 
 						}
 						return false;
@@ -586,7 +587,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == LightAssistEasy.id : false; 
 						}
 						return false;
@@ -595,7 +596,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == Easy.id : false; 
 						}
 						return false;
@@ -604,7 +605,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == Normal.id : false; 
 						}
 						return false;
@@ -613,7 +614,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == Hard.id : false; 
 						}
 						return false;
@@ -622,7 +623,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == ExHard.id : false; 
 						}
 						return false;
@@ -631,7 +632,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == FullCombo.id : false; 
 						}
 						return false;
@@ -640,7 +641,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == Perfect.id : false; 
 						}
 						return false;
@@ -649,7 +650,7 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,
 					(state) -> {
 						if(state instanceof MusicSelector) {
-							IRScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
+							ScoreData score = ((MusicSelector) state).getSelectedBar().getScore();
 							return score != null ? score.getClear() == Max.id : false; 
 						}
 						return false;
@@ -731,14 +732,14 @@ public class BooleanPropertyFactory {
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC, (state) -> (state.main.getPlayerResource().isUpdateScore()));
 		case OPTION_RESULT_CLEAR:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC, (state) -> {
-				final IRScoreData score = state.main.getPlayerResource().getScoreData();
-				final IRScoreData cscore = state.main.getPlayerResource().getCourseScoreData();
+				final ScoreData score = state.main.getPlayerResource().getScoreData();
+				final ScoreData cscore = state.main.getPlayerResource().getCourseScoreData();
 				return score.getClear() != Failed.id && (cscore == null || cscore.getClear() != Failed.id);
 			});
 		case OPTION_RESULT_FAIL:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC, (state) -> {
-				final IRScoreData score = state.main.getPlayerResource().getScoreData();
-				final IRScoreData cscore = state.main.getPlayerResource().getCourseScoreData();
+				final ScoreData score = state.main.getPlayerResource().getScoreData();
+				final ScoreData cscore = state.main.getPlayerResource().getCourseScoreData();
 				return score.getClear() == Failed.id || (cscore != null && cscore.getClear() == Failed.id);
 			});
 		case OPTION_1PWIN:
@@ -750,8 +751,8 @@ public class BooleanPropertyFactory {
 		case OPTION_IR_NOPLAYER:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC, (state) -> {
 				if(state instanceof MusicSelector) {
-					final MusicSelector.IRAccessStatus irc = ((MusicSelector)state).getCurrentIRStatus();
-					return irc != null && irc.getState() == MusicSelector.IRAccessStatus.FINISH && irc.getTotalPlayer() == 0;
+					final RankingData irc = ((MusicSelector)state).getCurrentRankingData();
+					return irc != null && irc.getState() == RankingData.FINISH && irc.getTotalPlayer() == 0;
 				}
 				return false;
 			});
@@ -759,14 +760,14 @@ public class BooleanPropertyFactory {
 		case OPTION_IR_BUSY:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC, (state) -> {
 				if(state instanceof MusicSelector) {
-					final MusicSelector.IRAccessStatus irc = ((MusicSelector)state).getCurrentIRStatus();
-					return irc != null && irc.getState() == MusicSelector.IRAccessStatus.FAIL;
+					final RankingData irc = ((MusicSelector)state).getCurrentRankingData();
+					return irc != null && irc.getState() == RankingData.FAIL;
 				}
 				return false;
 			});
 		case OPTION_IR_WAITING:
 			return new DrawProperty(DrawProperty.TYPE_NO_STATIC,	
-					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector)state).getCurrentIRStatus() == null : false));
+					(state) -> ((state instanceof MusicSelector) ? ((MusicSelector)state).getCurrentRankingData() == null : false));
 
 		}
 		
@@ -921,7 +922,7 @@ public class BooleanPropertyFactory {
 
 		@Override
 		public boolean get(MainState state) {
-			final IRScoreData score = state.getScoreDataProperty().getScoreData();
+			final ScoreData score = state.getScoreDataProperty().getScoreData();
 			return score != null && score.getTrophy() != null && score.getTrophy().indexOf(trophy.character) >= 0;
 		}
 
