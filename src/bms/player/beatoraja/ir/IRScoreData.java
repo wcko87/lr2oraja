@@ -3,6 +3,8 @@ package bms.player.beatoraja.ir;
 import bms.player.beatoraja.ClearType;
 import bms.player.beatoraja.ScoreData;
 import bms.player.beatoraja.input.BMSPlayerInputDevice;
+import bms.player.beatoraja.play.BMSPlayerRule;
+import bms.player.beatoraja.play.JudgeAlgorithm;
 
 /**
  * IR用スコアデータ
@@ -15,6 +17,10 @@ public class IRScoreData {
 	 * 譜面のハッシュ値
 	 */
 	public final String sha256;
+	/**
+	 * LN TYPE(0: LN, 1: CN, 2: HCN)
+	 */
+	public final int lntype;
 	/**
 	 * プレイヤー名。自身のスコアの場合は空白
 	 */
@@ -89,9 +95,18 @@ public class IRScoreData {
 	 * 入力デバイス
 	 */
 	public final BMSPlayerInputDevice.Type deviceType;
+	/**
+	 * 判定アルゴリズム
+	 */
+	public final JudgeAlgorithm judgeAlgorithm;
+	/**
+	 * ルール
+	 */
+	public final BMSPlayerRule rule;
 	
 	public IRScoreData(ScoreData score) {
 		this.sha256 = score.getSha256();
+		this.lntype = score.getMode();
 		this.player = score.getPlayer();
 		this.clear = ClearType.getClearTypeByID(score.getClear());
 		this.date = score.getDate();
@@ -115,6 +130,8 @@ public class IRScoreData {
 		this.assist = score.getAssist();
 		this.gauge = score.getGauge();
 		this.deviceType = score.getDeviceType();
+		this.judgeAlgorithm = score.getJudgeAlgorithm();
+		this.rule = score.getRule();
 	}
 	
 	public int getExscore() {

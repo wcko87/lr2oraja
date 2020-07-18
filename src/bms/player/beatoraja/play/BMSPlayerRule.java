@@ -10,31 +10,46 @@ import bms.model.Mode;
  */
 public enum BMSPlayerRule {
 
-    BEAT_5K(GaugeProperty.LR2, JudgeProperty.LR2),
-    BEAT_7K(GaugeProperty.LR2, JudgeProperty.LR2),
-    BEAT_10K(GaugeProperty.LR2, JudgeProperty.LR2),
-    BEAT_14K(GaugeProperty.LR2, JudgeProperty.LR2),
-    POPN_5K(GaugeProperty.LR2, JudgeProperty.LR2),
-    POPN_9K(GaugeProperty.LR2, JudgeProperty.LR2),
-    KEYBOARD_24K(GaugeProperty.LR2, JudgeProperty.LR2),
-    KEYBOARD_24K_DOUBLE(GaugeProperty.LR2, JudgeProperty.LR2),
-    LR2(GaugeProperty.LR2, JudgeProperty.LR2),
-    Default(GaugeProperty.LR2, JudgeProperty.LR2),
-    ;
+	Beatoraja_5(GaugeProperty.FIVEKEYS, JudgeProperty.FIVEKEYS, Mode.BEAT_5K, Mode.BEAT_10K),
+	Beatoraja_7(GaugeProperty.SEVENKEYS, JudgeProperty.SEVENKEYS, Mode.BEAT_7K, Mode.BEAT_14K),
+	Beatoraja_9(GaugeProperty.PMS, JudgeProperty.PMS, Mode.POPN_5K, Mode.POPN_9K),
+	Beatoraja_24(GaugeProperty.KEYBOARD, JudgeProperty.KEYBOARD, Mode.KEYBOARD_24K, Mode.KEYBOARD_24K_DOUBLE),
+	Beatoraja_Other(GaugeProperty.SEVENKEYS, JudgeProperty.SEVENKEYS),
 
+	LR2(GaugeProperty.LR2, JudgeProperty.SEVENKEYS),
+
+	Default(GaugeProperty.SEVENKEYS, JudgeProperty.SEVENKEYS),
+;
+
+	/**
+	 * ゲージ仕様
+	 */
     public final GaugeProperty gauge;
+	/**
+	 * 判定仕様
+	 */
     public final JudgeProperty judge;
+	/**
+	 * 対象モード。全モード対象の場合は空列
+	 */
+	public final Mode[] mode;
 
-    private BMSPlayerRule(GaugeProperty gauge, JudgeProperty judge) {
+    private BMSPlayerRule(GaugeProperty gauge, JudgeProperty judge, Mode... mode) {
         this.gauge = gauge;
         this.judge = judge;
+        this.mode = mode;
     }
 
     public static BMSPlayerRule getBMSPlayerRule(Mode mode) {
-        for(BMSPlayerRule bmsrule : BMSPlayerRule.values()) {
-            if(bmsrule.name().equals(mode.name())) {
-                return bmsrule;
-            }
+        for(BMSPlayerRule bmsrule : BMSPlayerRuleSet.LR2.ruleset) {
+        	if(bmsrule.mode.length == 0) {
+    			return bmsrule; 
+        	}
+        	for(Mode m : bmsrule.mode) {
+        		if(mode == m) {
+        			return bmsrule;
+        		}
+        	}
         }
         return Default;
     }
@@ -91,3 +106,14 @@ public enum BMSPlayerRule {
 	}
 }
 
+enum BMSPlayerRuleSet {
+	
+	Beatoraja(BMSPlayerRule.Beatoraja_5, BMSPlayerRule.Beatoraja_7, BMSPlayerRule.Beatoraja_9, BMSPlayerRule.Beatoraja_24,  BMSPlayerRule.Beatoraja_Other),
+	LR2(BMSPlayerRule.LR2);
+	
+	public final BMSPlayerRule[] ruleset;
+	
+    private BMSPlayerRuleSet(BMSPlayerRule... ruleset) {
+    	this.ruleset = ruleset;
+    }
+}

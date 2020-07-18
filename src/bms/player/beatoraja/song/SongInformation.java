@@ -4,13 +4,10 @@ import bms.model.*;
 import bms.player.beatoraja.Validatable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
-
-import com.badlogic.gdx.utils.IntArray;
 
 /**
  * 楽曲詳細情報
@@ -18,8 +15,6 @@ import com.badlogic.gdx.utils.IntArray;
  * @author exch
  */
 public class SongInformation implements Validatable {
-	
-	// TODO BPM遷移の追加
 	
 	/**
 	 * 譜面のハッシュ値
@@ -69,23 +64,32 @@ public class SongInformation implements Validatable {
 	private int[][] distributionValues = new int[0][7];
 
 	/**
-	 * 分布
+	 * BPM遷移
 	 */
 	private String speedchange = "";
 	
 	private double[][] speedchangeValues = new double[0][2];
+
+	/**
+	 * 各レーンのノーツ数
+	 */
+	private String lanenotes = "";
+	
+	private int[][] lanenotesValues = new int[0][3];
 
 	public SongInformation() {
 		
 	}
 	
 	public SongInformation(BMSModel model) {
+		sha256 = model.getSHA256();
 		n = BMSModelUtils.getTotalNotes(model, BMSModelUtils.TOTALNOTES_KEY);
 		ln = BMSModelUtils.getTotalNotes(model, BMSModelUtils.TOTALNOTES_LONG_KEY);
 		s = BMSModelUtils.getTotalNotes(model, BMSModelUtils.TOTALNOTES_SCRATCH);
 		ls = BMSModelUtils.getTotalNotes(model, BMSModelUtils.TOTALNOTES_LONG_SCRATCH);
 		total = model.getTotal();
 		
+		int[][] lanenotes = new int[model.getMode().key][3];
 		int[][] data = new int[model.getLastTime() / 1000 + 2][7];
 		int pos = 0;
 		int border = (int) (model.getTotalNotes() * (1.0 - 100.0 / model.getTotal()));
@@ -107,13 +111,16 @@ public class SongInformation implements Validatable {
 							&& ((LongNote) n).isEnd())) {
 						if (n instanceof NormalNote) {
 							data[tl.getTime() / 1000][model.getMode().isScratchKey(i) ? 2 : 5]++;
+							lanenotes[i][0]++;
 						}
 						if (n instanceof LongNote) {
 							data[tl.getTime() / 1000][model.getMode().isScratchKey(i) ? 0 : 3]++;
 							data[tl.getTime() / 1000][model.getMode().isScratchKey(i) ? 1 : 4]--;
+							lanenotes[i][1]++;
 						}
 						if (n instanceof MineNote) {
 							data[tl.getTime() / 1000][6]++;
+							lanenotes[i][2]++;
 						}
 						
 						border--;
@@ -182,6 +189,9 @@ public class SongInformation implements Validatable {
 		}
 
 		setSpeedchangeValues(speedList.toArray(new double[speedList.size()][]));
+		
+		setLanenotesValues(lanenotes);
+
 	}
 	
 	public String getDistribution() {
@@ -265,7 +275,7 @@ public class SongInformation implements Validatable {
 
 	public void setSpeedchange(String speedchange) {
 		this.speedchange = speedchange;
-		ArrayList<double[]> result = new ArrayList();
+		ArrayList<double[]> result = new ArrayList<double[]>();
 		int index = 0;
 		double[] values = new double[2];
 		try {
@@ -297,6 +307,46 @@ public class SongInformation implements Validatable {
 			}
 		}
 		speedchange = sb.toString();
+	}
+
+	public String getLanenotes() {
+		return lanenotes;
+	}
+
+	public void setLanenotes(String lanenotes) {
+		this.lanenotes = lanenotes;
+		ArrayList<int[]> result = new ArrayList<int[]>();
+		int index = 0;
+		int[] values = new int[3];
+		try {
+			for(String s : lanenotes.split(",", -1)) {
+				values[index++] = Integer.parseInt(s);
+				if(index == values.length) {
+					index = 0;
+					result.add(values);
+					values = new int[3];
+				}
+			}
+		} catch(Throwable e) {
+			result.clear();
+		}
+		lanenotesValues = result.toArray(new int[result.size()][]);
+	}
+
+	public int[][] getLanenotesValues() {
+		return lanenotesValues;
+	}
+
+	public void setLanenotesValues(int[][] values) {
+		lanenotesValues = values;
+		StringBuilder sb = new StringBuilder(values.length * 14 + 1);
+		for(int i = 0;i < values.length;i++) {
+			sb.append(values[i][0]).append(',').append(values[i][1]).append(',').append(values[i][2]);
+			if(i < values.length - 1) {
+				sb.append(',');
+			}
+		}
+		lanenotes = sb.toString();
 	}
 
 	public int getN() {
