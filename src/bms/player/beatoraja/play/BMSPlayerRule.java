@@ -16,7 +16,7 @@ public enum BMSPlayerRule {
 	Beatoraja_24(GaugeProperty.KEYBOARD, JudgeProperty.KEYBOARD, Mode.KEYBOARD_24K, Mode.KEYBOARD_24K_DOUBLE),
 	Beatoraja_Other(GaugeProperty.SEVENKEYS, JudgeProperty.SEVENKEYS),
 
-	LR2(GaugeProperty.LR2, JudgeProperty.SEVENKEYS),
+	LR2(GaugeProperty.LR2, JudgeProperty.LR2),
 
 	Default(GaugeProperty.SEVENKEYS, JudgeProperty.SEVENKEYS),
 ;
@@ -51,7 +51,7 @@ public enum BMSPlayerRule {
         		}
         	}
         }
-        return Default;
+        return LR2;
     }
     
     public static void validate(BMSModel model) {
