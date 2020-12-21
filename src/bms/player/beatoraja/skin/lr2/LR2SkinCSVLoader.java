@@ -11,7 +11,6 @@ import static bms.player.beatoraja.skin.SkinProperty.*;
 
 import bms.model.Mode;
 import bms.player.beatoraja.*;
-import bms.player.beatoraja.SkinConfig.Offset;
 import bms.player.beatoraja.play.PlaySkin;
 import bms.player.beatoraja.play.SkinGauge;
 import bms.player.beatoraja.play.bga.BGAProcessor;
@@ -837,32 +836,27 @@ public abstract class LR2SkinCSVLoader<S extends Skin> extends LR2SkinLoader {
 
 	private ObjectMap<String, String> filemap = new ObjectMap<String, String>();
 
-	protected S loadSkin(S skin, Path f, MainState state, SkinHeader header, IntIntMap option,
-			ObjectMap<String, Object> property) throws IOException {
+	protected S loadSkin(S skin, Path f, MainState state, SkinHeader header, IntIntMap option) throws IOException {
 		this.skin = skin;
 		this.state = state;
-		for (String key : property.keys()) {
-			if (property.get(key) != null) {
-				if (property.get(key) instanceof Integer) {
-					op.put((Integer) property.get(key), 1);
-				}
-				if (property.get(key) instanceof String) {
-					for (CustomFile file : header.getCustomFiles()) {
-						if (file.name.equals(key)) {
-							filemap.put(file.path, (String) property.get(key));
-							break;
-						}
-					}
-				}
+		mode = header.getSkinType().getMode();
+
+		for (CustomOption opt : header.getCustomOptions()) {
+			int value = opt.getSelectedOption();
+			if(value != OPTION_RANDOM_VALUE) {
+				op.put((Integer) value, 1);
 			}
 		}
-
-		IntMap<SkinConfig.Offset> offset = new IntMap<>();
-		for (CustomOffset of : header.getCustomOffsets()) {
-			final Object o = property.get(of.name);
-			if(o instanceof Offset) {
-				offset.put(of.id, (Offset)o);				
+		for (CustomFile cf : header.getCustomFiles()) {
+			String filename = cf.getSelectedFilename();
+			if(filename != null) {
+				filemap.put(cf.path, filename);
 			}
+		}
+		
+		IntMap<SkinConfig.Offset> offset = new IntMap<>();
+		for (SkinHeader.CustomOffset of : header.getCustomOffsets()) {
+			offset.put(of.id, of.getOffset());
 		}
 		skin.setOffset(offset);
 
@@ -975,61 +969,7 @@ public abstract class LR2SkinCSVLoader<S extends Skin> extends LR2SkinLoader {
 		return images;
 	}
 
-	public S loadSkin(Path f, MainState state, SkinHeader header, IntIntMap option, SkinConfig.Property property) throws IOException {
-		ObjectMap m = new ObjectMap();
-		for(SkinConfig.Option op : property.getOption()) {
-			if(op.value != OPTION_RANDOM_VALUE) {
-				m.put(op.name, op.value);
-			} else {
-				for (CustomOption opt : header.getCustomOptions()) {
-					if(op.name.equals(opt.name)) {
-						if(header.getRandomSelectedOptions(op.name) >= 0) m.put(op.name, header.getRandomSelectedOptions(op.name));
-					}
-				}
-			}
-		}
-		for(SkinConfig.FilePath file : property.getFile()) {
-			if(!file.path.equals("Random")) {
-				m.put(file.name, file.path);
-			} else {
-				for (CustomFile cf : header.getCustomFiles()) {
-					if(file.name.equals(cf.name)) {
-						String ext = cf.path.substring(cf.path.lastIndexOf("*") + 1);
-						if(cf.path.contains("|")) {
-							if(cf.path.length() > cf.path.lastIndexOf('|') + 1) {
-								ext = cf.path.substring(cf.path.lastIndexOf("*") + 1, cf.path.indexOf('|')) + cf.path.substring(cf.path.lastIndexOf('|') + 1);
-							} else {
-								ext = cf.path.substring(cf.path.lastIndexOf("*") + 1, cf.path.indexOf('|'));
-							}
-						}
-						final int slashindex = cf.path.lastIndexOf('/');
-						File dir = slashindex != -1 ? new File(cf.path.substring(0, slashindex)) : new File(cf.path);
-						if (dir.exists() && dir.isDirectory()) {
-							Array<File> l = new Array<File>();
-							for (File subfile : dir.listFiles()) {
-								if (subfile.getPath().toLowerCase().endsWith(ext)) {
-									l.add(subfile);
-								}
-							}
-							if (l.size > 0) {
-								String filename = l.get((int) (Math.random() * l.size)).getName();
-								m.put(file.name, filename);
-							}
-						}
-					}
-				}
-			}
-		}
-		for(SkinConfig.Offset offset : property.getOffset()) {
-			m.put(offset.name, offset);
-		}
-
-		mode = header.getSkinType().getMode();
-
-		return loadSkin(f, state, header, option, m);
-	}
-
-	public abstract S loadSkin(Path f, MainState state, SkinHeader header, IntIntMap option, ObjectMap property) throws IOException;
+	public abstract S loadSkin(Path f, MainState state, SkinHeader header, IntIntMap option) throws IOException;
 
 	/**
 	 * SkinTypeに対応したLR2SkinCSVLoaderを返す

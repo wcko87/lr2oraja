@@ -27,8 +27,6 @@ import bms.player.beatoraja.skin.SkinType;
  */
 public class BMSPlayer extends MainState {
 
-	// TODO GLAssistから起動すると楽曲ロード中に止まる
-
 	private BMSModel model;
 
 	private LaneRenderer lanerender;
@@ -170,8 +168,10 @@ public class BMSPlayer extends MainState {
 				assist = Math.max(assist, 1);
 				score = false;
 			}
-			
-			if (config.getJudgewindowrate() > 100) {
+
+			if (config.isCustomJudge() &&
+					(config.getKeyJudgeWindowRatePerfectGreat() > 100 || config.getKeyJudgeWindowRateGreat() > 100 || config.getKeyJudgeWindowRateGood() > 100
+					|| config.getScratchJudgeWindowRatePerfectGreat() > 100 || config.getScratchJudgeWindowRateGreat() > 100 || config.getScratchJudgeWindowRateGood() > 100)) {
 				assist = Math.max(assist, 2);
 				score = false;
 			}
@@ -182,7 +182,7 @@ public class BMSPlayer extends MainState {
 				mods.add(new ScrollSpeedModifier(config.getScrollMode() - 1));
 			}
 			if(config.getLongnoteMode() > 0) {
-				mods.add(new LongNoteModifier(config.getLongnoteMode() - 1));
+				mods.add(new LongNoteModifier(config.getLongnoteMode() - 1, config.getLongnoteRate()));
 			}
 			if(config.getMineMode() > 0) {
 				mods.add(new MineNoteModifier(config.getMineMode() - 1));
@@ -190,13 +190,13 @@ public class BMSPlayer extends MainState {
 			if(config.getExtranoteDepth() > 0) {
 				mods.add(new ExtraNoteModifier(config.getExtranoteType(), config.getExtranoteDepth(), config.isExtranoteScratch()));
 			}
-			
+
 			for(PatternModifier mod : mods) {
 				mod.modify(model);
 				if(mod.getAssistLevel() != PatternModifier.AssistLevel.NONE) {
 					assist = Math.max(assist, mod.getAssistLevel() == PatternModifier.AssistLevel.ASSIST ? 2 : 1);
 					score = false;
-				}				
+				}
 			}
 
 			if (config.getDoubleoption() >= 2 && (model.getMode() == Mode.BEAT_5K || model.getMode() == Mode.BEAT_7K || model.getMode() == Mode.KEYBOARD_24K)) {
@@ -212,7 +212,7 @@ public class BMSPlayer extends MainState {
 					model.setMode(Mode.KEYBOARD_24K_DOUBLE);
 					break;
 				}
-				LaneShuffleModifier mod = new LaneShuffleModifier(LaneShuffleModifier.BATTLE);
+				LaneShuffleModifier mod = new LaneShuffleModifier(Random.BATTLE);
 				mod.setModifyTarget(PatternModifier.SIDE_1P);
 				mod.modify(model);
 				if(config.getDoubleoption() == 3) {
@@ -240,20 +240,15 @@ public class BMSPlayer extends MainState {
 			PatternModifier.modify(model, pattern);
 			Logger.getGlobal().info("譜面オプション : 保存された譜面変更ログから譜面再現");
 		} else if (autoplay != PlayMode.PRACTICE) {
-			Randomizer.setPlayerConfig(config);
-			PatternModifier.setPlayerConfig(config);
+			
+			Array<PatternModifier> mods = new Array<PatternModifier>();
+			// DP譜面オプション
 			if(model.getMode().player == 2) {
 				if (config.getDoubleoption() == 1) {
-					LaneShuffleModifier mod = new LaneShuffleModifier(LaneShuffleModifier.FLIP);
-					pattern = PatternModifier.merge(pattern,mod.modify(model));
+					mods.add(new LaneShuffleModifier(Random.FLIP));
 				}
-				pattern = PatternModifier.merge(pattern,
-								PatternModifier.create(config.getRandom2(), PatternModifier.SIDE_2P, model.getMode())
-										.modify(model));
-				if (config.getRandom2() >= 6) {
-					assist = Math.max(assist, 1);
-					score = false;
-				}
+				Logger.getGlobal().info("譜面オプション(DP) :  " + config.getDoubleoption());
+				mods.add(PatternModifier.create(config.getRandom2(), PatternModifier.SIDE_2P, model.getMode(), config));
 				Logger.getGlobal().info("譜面オプション(2P) :  " + config.getRandom2());
 			}
 
@@ -271,26 +266,26 @@ public class BMSPlayer extends MainState {
 				}
 			}
 
-			pattern = PatternModifier.merge(pattern,
-					PatternModifier
-							.create(config.getRandom(), PatternModifier.SIDE_1P, model.getMode())
-							.modify(model));
-			if (config.getRandom() >= 6 && !(config.getRandom() == 8 && model.getMode() == Mode.POPN_9K)) {
-				assist = Math.max(assist, 1);
-				score = false;
-			}
+			// SP譜面オプション
+			mods.add(PatternModifier.create(config.getRandom(), PatternModifier.SIDE_1P, model.getMode(), config));
 			Logger.getGlobal().info("譜面オプション(1P) :  " + config.getRandom());
+
 			if (config.getSevenToNinePattern() >= 1 && model.getMode() == Mode.BEAT_7K) {
 				//7to9
-				model.setMode(Mode.POPN_9K);
-				NoteShuffleModifier mod = new NoteShuffleModifier(NoteShuffleModifier.SEVEN_TO_NINE);
+				ModeModifier mod = new ModeModifier(Mode.BEAT_7K, Mode.POPN_9K, config);
 				mod.setModifyTarget(PatternModifier.SIDE_1P);
-				pattern = mod.modify(model);
-				if(config.getSevenToNineType() != 0) {
-					assist = Math.max(assist, 1);
-					score = false;
-				}
+				mods.add(mod);
 			}
+
+			for(PatternModifier mod : mods) {
+				pattern = PatternModifier.merge(pattern,mod.modify(model));
+				if(mod.getAssistLevel() != PatternModifier.AssistLevel.NONE) {
+					Logger.getGlobal().info("アシスト譜面オプションが選択されました");
+					assist = Math.max(assist, mod.getAssistLevel() == PatternModifier.AssistLevel.ASSIST ? 2 : 1);
+					score = false;
+				}				
+			}
+
 		}
 
 		if(HSReplay != null && HSReplay.config != null) {
@@ -492,7 +487,6 @@ public class BMSPlayer extends MainState {
 			if (input.getKeystate()[0] && resource.mediaLoadFinished() && now > skin.getLoadstart() + skin.getLoadend()
 					&& now - startpressedtime > 1000) {
 				PracticeProperty property = practice.getPracticeProperty();
-				Randomizer.setPlayerConfig(config);
 				control.setEnableControl(true);
 				control.setEnableCursor(true);
 				if (property.freq != 100) {
@@ -507,11 +501,11 @@ public class BMSPlayer extends MainState {
 				pm.modify(model);
 				if (model.getMode().player == 2) {
 					if (property.doubleop == 1) {
-						new LaneShuffleModifier(LaneShuffleModifier.FLIP).modify(model);
+						new LaneShuffleModifier(Random.FLIP).modify(model);
 					}
-					PatternModifier.create(property.random2, PatternModifier.SIDE_2P, model.getMode()).modify(model);
+					PatternModifier.create(property.random2, PatternModifier.SIDE_2P, model.getMode(), config).modify(model);
 				}
-				PatternModifier.create(property.random, PatternModifier.SIDE_1P, model.getMode()).modify(model);
+				PatternModifier.create(property.random, PatternModifier.SIDE_1P, model.getMode(), config).modify(model);
 
 				gauge = practice.getGauge(model);
 				model.setJudgerank(property.judgerank);

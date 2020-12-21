@@ -11,6 +11,7 @@ import org.luaj.vm2.lib.jse.JsePlatform;
 import bms.player.beatoraja.MainState;
 import bms.player.beatoraja.skin.SkinHeader;
 import bms.player.beatoraja.skin.SkinProperty;
+import bms.player.beatoraja.skin.SkinHeader.CustomOffset;
 import bms.player.beatoraja.skin.SkinHeader.CustomOption;
 import bms.player.beatoraja.skin.property.*;
 import bms.player.beatoraja.SkinConfig;
@@ -338,24 +339,30 @@ public class SkinLuaAccessor {
 
 		LuaTable options = new LuaTable();
 		LuaTable enabled_options = new LuaTable();
-		for (SkinConfig.Option op : property.getOption()){
-			int opvalue = op.value;
-			if(opvalue == SkinProperty.OPTION_RANDOM_VALUE) {
-				for (CustomOption option : header.getCustomOptions()) {
-					if(option.option.length > 0 && op.name.equals(option.name)) {
-						opvalue = option.option[(int) (Math.random() * option.option.length)];
-						header.setRandomSelectedOptions(option.name, opvalue);
-					}
-				}
-			}
-			options.set(op.name, opvalue);
+		
+		for (CustomOption option : header.getCustomOptions()) {
+			int opvalue = option.getSelectedOption();
+			options.set(option.name, opvalue);
 			enabled_options.insert(enabled_options.length() + 1, LuaInteger.valueOf(opvalue));				
 		}
+
 		table.set("option", options);
 		table.set("enabled_options", enabled_options);
 
 		LuaTable offsets = new LuaTable();
-		for (SkinConfig.Offset ofs : property.getOffset()) {
+		
+		for(CustomOffset offset : header.getCustomOffsets()) {
+			SkinConfig.Offset ofs = null;
+			for (SkinConfig.Offset of : property.getOffset()) {
+				if(offset.name.equals(of.name)) {
+					ofs = of;
+					break;
+				}
+			}
+			if(ofs == null) {
+				ofs = new SkinConfig.Offset();
+				ofs.name = offset.name;
+			}
 			LuaTable offsetTable = new LuaTable();
 			offsetTable.set("x", ofs.x);
 			offsetTable.set("y", ofs.y);
@@ -363,7 +370,7 @@ public class SkinLuaAccessor {
 			offsetTable.set("h", ofs.h);
 			offsetTable.set("r", ofs.r);
 			offsetTable.set("a", ofs.a);
-			offsets.set(ofs.name, offsetTable);
+			offsets.set(ofs.name, offsetTable);			
 		}
 		table.set("offset", offsets);
 	}

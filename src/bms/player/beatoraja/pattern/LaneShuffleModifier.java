@@ -26,38 +26,9 @@ public class LaneShuffleModifier extends PatternModifier {
 	/**
 	 * ランダムのタイプ
 	 */
-	private int type;
-	/**
-	 * ミラー
-	 */
-	public static final int MIRROR = 0;
-	/**
-	 * ローテート
-	 */
-	public static final int R_RANDOM = 1;
-	/**
-	 * ランダム
-	 */
-	public static final int RANDOM = 2;
-	/**
-	 * クロス
-	 */
-	public static final int CROSS = 3;
-	/**
-	 * スクラッチレーンを含むランダム
-	 */
-	public static final int RANDOM_EX = 4;
-	/**
-	 * 1P-2Pを入れ替える
-	 */
-	public static final int FLIP = 5;
-	/**
-	 * 1Pの譜面を2Pにコピーする
-	 */
-	public static final int BATTLE = 6;
+	private Random type;
 
-	public LaneShuffleModifier(int type) {
-		super(type == RANDOM_EX ? 1 : 0);
+	public LaneShuffleModifier(Random type) {
 		this.type = type;
 	}
 
@@ -89,8 +60,12 @@ public class LaneShuffleModifier extends PatternModifier {
 			break;
 		case RANDOM_EX:
 			keys = getKeys(mode, true);
-			if(mode == Mode.POPN_9K) random = keys.length > 0 ? noMurioshiLaneShuffle(model) : keys;
-			else random = keys.length > 0 ? shuffle(keys) : keys;
+			if(mode == Mode.POPN_9K) {
+				random = keys.length > 0 ? noMurioshiLaneShuffle(model) : keys;
+			} else { 
+				random = keys.length > 0 ? shuffle(keys) : keys;
+				setAssistLevel(AssistLevel.LIGHT_ASSIST);
+			}
 			break;
 		case FLIP:
 			if (mode.player == 2) {
@@ -110,6 +85,7 @@ public class LaneShuffleModifier extends PatternModifier {
 				random = new int[keys.length * 2];
 				System.arraycopy(keys, 0, random, 0, keys.length);
 				System.arraycopy(keys, 0, random, keys.length, keys.length);
+				setAssistLevel(AssistLevel.LIGHT_ASSIST);
 			}
 			break;
 

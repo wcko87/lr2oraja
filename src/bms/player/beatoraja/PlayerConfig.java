@@ -85,10 +85,18 @@ public class PlayerConfig {
 	 * ロングノート追加/削除モード
 	 */
     private int longnoteMode = 0;
+    private double longnoteRate = 1.0;
 	/**
 	 * アシストオプション:判定拡大
 	 */
-	private int judgewindowrate = 100;
+	private boolean customJudge = false;
+	private int keyJudgeWindowRatePerfectGreat = 400;
+	private int keyJudgeWindowRateGreat = 400;
+	private int keyJudgeWindowRateGood = 100;
+	private int scratchJudgeWindowRatePerfectGreat = 400;
+	private int scratchJudgeWindowRateGreat = 400;
+	private int scratchJudgeWindowRateGood = 100;
+
 	/**
 	 * 地雷モード
 	 */
@@ -176,6 +184,10 @@ public class PlayerConfig {
 	 * 選曲時でのキー入力方式
 	 */
 	private int musicselectinput = 0;
+
+	public static final int IR_SEND_ALWAYS = 0;
+	public static final int IR_SEND_COMPLETE_SONG = 1;
+	public static final int IR_SEND_UPDATE_SCORE = 2;
 
 	private IRConfig[] irconfig;
 	
@@ -492,15 +504,60 @@ public class PlayerConfig {
 		this.misslayerDuration = misslayerTime;
 	}
 
-	public int getJudgewindowrate() {
-		if(judgewindowrate < 25 || judgewindowrate > 400) {
-			judgewindowrate = 100;
-		}
-		return judgewindowrate;
+	public boolean isCustomJudge() {
+		return customJudge;
 	}
 
-	public void setJudgewindowrate(int judgewindowrate) {
-		this.judgewindowrate = judgewindowrate;
+	public void setCustomJudge(boolean customJudge) {
+		this.customJudge = customJudge;
+	}
+
+	public int getKeyJudgeWindowRatePerfectGreat() {
+		return keyJudgeWindowRatePerfectGreat;
+	}
+
+	public void setKeyJudgeWindowRatePerfectGreat(int judgeWindowRatePerfectGreat) {
+		this.keyJudgeWindowRatePerfectGreat = judgeWindowRatePerfectGreat;
+	}
+
+	public int getKeyJudgeWindowRateGreat() {
+		return keyJudgeWindowRateGreat;
+	}
+
+	public void setKeyJudgeWindowRateGreat(int judgeWindowRateGreat) {
+		this.keyJudgeWindowRateGreat = judgeWindowRateGreat;
+	}
+
+	public int getKeyJudgeWindowRateGood() {
+		return keyJudgeWindowRateGood;
+	}
+
+	public void setKeyJudgeWindowRateGood(int judgeWindowRateGood) {
+		this.keyJudgeWindowRateGood = judgeWindowRateGood;
+	}
+
+	public int getScratchJudgeWindowRatePerfectGreat() {
+		return scratchJudgeWindowRatePerfectGreat;
+	}
+
+	public void setScratchJudgeWindowRatePerfectGreat(int judgeWindowRatePerfectGreat) {
+		this.scratchJudgeWindowRatePerfectGreat = judgeWindowRatePerfectGreat;
+	}
+
+	public int getScratchJudgeWindowRateGreat() {
+		return scratchJudgeWindowRateGreat;
+	}
+
+	public void setScratchJudgeWindowRateGreat(int judgeWindowRateGreat) {
+		this.scratchJudgeWindowRateGreat = judgeWindowRateGreat;
+	}
+
+	public int getScratchJudgeWindowRateGood() {
+		return scratchJudgeWindowRateGood;
+	}
+
+	public void setScratchJudgeWindowRateGood(int judgeWindowRateGood) {
+		this.scratchJudgeWindowRateGood = judgeWindowRateGood;
 	}
 
 	public int getHranThresholdBPM() {
@@ -648,13 +705,19 @@ public class PlayerConfig {
 		judgetiming = MathUtils.clamp(judgetiming, JUDGETIMING_MIN, JUDGETIMING_MAX);
 		misslayerDuration = MathUtils.clamp(misslayerDuration, 0, 5000);
 		lnmode = MathUtils.clamp(lnmode, 0, 2);
-		judgewindowrate = MathUtils.clamp(judgewindowrate, 10, 400);
+		keyJudgeWindowRatePerfectGreat = MathUtils.clamp(keyJudgeWindowRatePerfectGreat, 25, 400);
+		keyJudgeWindowRateGreat = MathUtils.clamp(keyJudgeWindowRateGreat, 0, 400);
+		keyJudgeWindowRateGood = MathUtils.clamp(keyJudgeWindowRateGood, 0, 400);
+		scratchJudgeWindowRatePerfectGreat = MathUtils.clamp(scratchJudgeWindowRatePerfectGreat, 25, 400);
+		scratchJudgeWindowRateGreat = MathUtils.clamp(scratchJudgeWindowRateGreat, 0, 400);
+		scratchJudgeWindowRateGood = MathUtils.clamp(scratchJudgeWindowRateGood, 0, 400);
 		hranThresholdBPM = MathUtils.clamp(hranThresholdBPM, 1, 1000);
 		sevenToNinePattern = MathUtils.clamp(sevenToNinePattern, 0, 6);
 		sevenToNineType = MathUtils.clamp(sevenToNineType, 0, 2);
 
 		scrollMode = MathUtils.clamp(scrollMode, 0, ScrollSpeedModifier.Mode.values().length);
 		longnoteMode = MathUtils.clamp(longnoteMode, 0, LongNoteModifier.Mode.values().length);
+		longnoteRate = MathUtils.clamp(longnoteRate, 0.0, 1.0);
 		mineMode = MathUtils.clamp(mineMode, 0, MineNoteModifier.Mode.values().length);
 		extranoteDepth = MathUtils.clamp(extranoteDepth, 0, 100);
 
@@ -790,5 +853,13 @@ public class PlayerConfig {
 
     public void setLongnoteMode(int longnoteMode) {
         this.longnoteMode = longnoteMode;
-    }	
+    }
+
+    public double getLongnoteRate() {
+        return longnoteRate;
+    }
+
+    public void setLongnoteRate(double longnoteRate) {
+        this.longnoteRate = longnoteRate;
+    }
 }

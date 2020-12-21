@@ -162,24 +162,6 @@ public class IntegerPropertyFactory {
 				return Integer.MIN_VALUE;
 			};
 		}
-		if (optionid >= NUMBER_RANKING1_CLEAR && optionid <= NUMBER_RANKING10_CLEAR) {
-			final int index = optionid - NUMBER_RANKING1_CLEAR;
-			result = (state) -> {
-				RankingData irc = null;
-				if (state instanceof MusicSelector) {
-					irc = ((MusicSelector) state).getCurrentRankingData();
-				}
-				if (state instanceof AbstractResult) {
-					irc = ((AbstractResult) state).getRankingData();
-				}
-				IRScoreData[] scores = irc != null ? irc.getScores() : null;
-				if(scores != null && scores.length > index) {
-					return scores[index].clear.id;
-				}
-				return Integer.MIN_VALUE;
-			};
-		}
-
 
 		if (optionid >= VALUE_JUDGE_1P_DURATION && optionid <= VALUE_JUDGE_3P_DURATION) {
 			final int player = optionid - VALUE_JUDGE_1P_DURATION;
@@ -533,20 +515,29 @@ public class IntegerPropertyFactory {
 				return Integer.MIN_VALUE;
 			};
 		case NUMBER_FOLDER_TOTALSONGS:
-			return (state) -> {
-				if (state instanceof MusicSelector) {
-					final Bar selected = ((MusicSelector)state).getBarRender().getSelected();
-					if (selected instanceof DirectoryBar) {
-						int[] lamps = ((DirectoryBar) selected).getLamps();
-						int count = 0;
-						for (int lamp : lamps) {
-							count += lamp;
-						}
-						return count;
-					}
-				}
-				return Integer.MIN_VALUE;
-			};
+			return new FolderTotalClearCountProperty(new int[]{0,1,2,3,4,5,6,7,8,9,10});
+		case NUMBER_FOLDER_NOPLAY:
+			return new FolderClearCountProperty(0);
+		case NUMBER_FOLDER_FAILED:
+			return new FolderClearCountProperty(1);
+		case NUMBER_FOLDER_ASSIST:
+			return new FolderClearCountProperty(2);
+		case NUMBER_FOLDER_LASSIST:
+			return new FolderClearCountProperty(3);
+		case NUMBER_FOLDER_EASY:
+			return new FolderClearCountProperty(4);
+		case NUMBER_FOLDER_GROOOVE:
+			return new FolderClearCountProperty(5);
+		case NUMBER_FOLDER_HARD:
+			return new FolderClearCountProperty(6);
+		case NUMBER_FOLDER_EXHARD:
+			return new FolderClearCountProperty(7);
+		case NUMBER_FOLDER_FULLCOMBO:
+			return new FolderClearCountProperty(8);
+		case NUMBER_FOLDER_PERFECT:
+			return new FolderClearCountProperty(9);
+		case NUMBER_FOLDER_MAX:
+			return new FolderClearCountProperty(10);
 		case NUMBER_PLAYTIME_MINUTE:
 			return (state) -> ((int) (((int) (state.main.isTimerOn(TIMER_PLAY) ? state.main.getNowTime(TIMER_PLAY) : 0))
 					/ 60000));
@@ -924,7 +915,7 @@ public class IntegerPropertyFactory {
 			result = (state) -> (state.main.getPlayerResource().getPlayerConfig().getDoubleoption());
 		}
 		if (optionid == BUTTON_ASSIST_EXJUDGE) {
-			result = (state) -> (state.main.getPlayerResource().getPlayerConfig().getJudgewindowrate() > 100 ? 1 : 0);
+			result = (state) -> (state.main.getPlayerResource().getPlayerConfig().isCustomJudge() ? 1 : 0);
 		}
 		if (optionid == BUTTON_ASSIST_CONSTANT) {
 			result = (state) -> (state.main.getPlayerResource().getPlayerConfig().getScrollMode() == 1 ? 1 : 0);
@@ -967,6 +958,23 @@ public class IntegerPropertyFactory {
 		}
 		if (optionid == BUTTON_AUTOSAVEREPLAY_4) {
 			result = (state) -> (state.main.getConfig().getAutoSaveReplay()[3]);
+		}
+		if (optionid >= NUMBER_RANKING1_CLEAR && optionid <= NUMBER_RANKING10_CLEAR) {
+			final int index = optionid - NUMBER_RANKING1_CLEAR;
+			result = (state) -> {
+				RankingData irc = null;
+				if (state instanceof MusicSelector) {
+					irc = ((MusicSelector) state).getCurrentRankingData();
+				}
+				if (state instanceof AbstractResult) {
+					irc = ((AbstractResult) state).getRankingData();
+				}
+				IRScoreData[] scores = irc != null ? irc.getScores() : null;
+				if(scores != null && scores.length > index) {
+					return scores[index].clear.id;
+				}
+				return Integer.MIN_VALUE;
+			};
 		}
 
 		if ((optionid >= VALUE_JUDGE_1P_SCRATCH && optionid <= VALUE_JUDGE_2P_KEY9)
@@ -1041,6 +1049,34 @@ public class IntegerPropertyFactory {
 		case BUTTON_SORT:
 			return (state) -> ((state instanceof MusicSelector) ? ((MusicSelector) state).getSort()
 					: Integer.MIN_VALUE);
+		case BUTTON_FAVORITTE_SONG:
+			return (state) -> {
+				final SongData sd = state.main.getPlayerResource().getSongdata();
+				if(sd != null) {
+					int type = 1;
+					if((sd.getFavorite() & (SongData.FAVORITE_SONG | SongData.INVISIBLE_SONG)) == 0) {
+						type = 0;
+					} else if((sd.getFavorite() & SongData.INVISIBLE_SONG) != 0) {
+						type = 2;
+					}
+					return type;
+				}
+				return Integer.MIN_VALUE;
+			};			
+		case BUTTON_FAVORITTE_CHART:
+			return (state) -> {
+				final SongData sd = state.main.getPlayerResource().getSongdata();
+				if(sd != null) {
+					int type = 1;
+					if((sd.getFavorite() & (SongData.FAVORITE_CHART | SongData.INVISIBLE_CHART)) == 0) {
+						type = 0;
+					} else if((sd.getFavorite() & SongData.INVISIBLE_CHART) != 0) {
+						type = 2;
+					}
+					return type;
+				}
+				return Integer.MIN_VALUE;
+			};			
 		case NUMBER_CLEAR:
 			return (state) -> {
 				if (state instanceof MusicSelector) {
@@ -1068,6 +1104,49 @@ public class IntegerPropertyFactory {
 		}
 		return null;
 	}
+
+	private static class FolderClearCountProperty implements IntegerProperty {
+
+		private final int clearType;
+		
+		public FolderClearCountProperty(int clearType) {
+			this.clearType = clearType;
+		}
+		@Override
+		public int get(MainState state) {
+			if (state instanceof MusicSelector) {
+				final Bar selected = ((MusicSelector)state).getBarRender().getSelected();
+				if (selected instanceof DirectoryBar) {
+					return ((DirectoryBar) selected).getLamps()[clearType];
+				}
+			}
+			return Integer.MIN_VALUE;
+		}		
+	}
+	
+	private static class FolderTotalClearCountProperty implements IntegerProperty {
+
+		private final int[] clearType;
+		
+		public FolderTotalClearCountProperty(int[] clearType) {
+			this.clearType = clearType;
+		}
+		@Override
+		public int get(MainState state) {
+			if (state instanceof MusicSelector) {
+				final Bar selected = ((MusicSelector)state).getBarRender().getSelected();
+				if (selected instanceof DirectoryBar) {
+					int[] lamps = ((DirectoryBar) selected).getLamps();
+					int count = 0;
+					for (int clear : clearType) {
+						count += lamps[clear];
+					}
+					return count;
+				}
+			}
+			return Integer.MIN_VALUE;
+		}		
+	}
 	
 	private static class IRClearCountProperty implements IntegerProperty {
 
@@ -1078,11 +1157,13 @@ public class IntegerPropertyFactory {
 		}
 		@Override
 		public int get(MainState state) {
+			RankingData irc = null;
 			if (state instanceof MusicSelector) {
-				final RankingData irc = ((MusicSelector) state).getCurrentRankingData();
-				return irc != null && irc.getState() == RankingData.FINISH ? irc.getClearCount(clearType) : Integer.MIN_VALUE;
+				irc = ((MusicSelector) state).getCurrentRankingData();
+			} else if(state instanceof AbstractResult) {
+				irc = ((AbstractResult) state).getRankingData();
 			}
-			return Integer.MIN_VALUE;
+			return irc != null && irc.getState() == RankingData.FINISH ? irc.getClearCount(clearType) : Integer.MIN_VALUE;
 		}		
 	}
 	
@@ -1095,15 +1176,19 @@ public class IntegerPropertyFactory {
 		}
 		@Override
 		public int get(MainState state) {
+			RankingData irc = null;
 			if (state instanceof MusicSelector) {
-				final RankingData irc = ((MusicSelector) state).getCurrentRankingData();
-				if(irc != null && irc.getState() == RankingData.FINISH) {
-					int count = 0;
-					for(int c : clearType) {
-						count += irc.getClearCount(c);
-					}
-					return count;
+				irc = ((MusicSelector) state).getCurrentRankingData();
+			} else if(state instanceof AbstractResult) {
+				irc = ((AbstractResult) state).getRankingData();
+			}
+
+			if(irc != null && irc.getState() == RankingData.FINISH) {
+				int count = 0;
+				for(int c : clearType) {
+					count += irc.getClearCount(c);
 				}
+				return count;
 			}
 			return Integer.MIN_VALUE;
 		}		
@@ -1120,12 +1205,14 @@ public class IntegerPropertyFactory {
 		}
 		@Override
 		public int get(MainState state) {
+			RankingData irc = null;
 			if (state instanceof MusicSelector) {
-				final RankingData irc = ((MusicSelector) state).getCurrentRankingData();
-				return irc != null && irc.getState() == RankingData.FINISH && irc.getTotalPlayer() > 0 ? 
-						(afterdot ? (irc.getClearCount(clearType) * 1000 / irc.getTotalPlayer()) % 10 : irc.getClearCount(clearType) * 100 / irc.getTotalPlayer()) : Integer.MIN_VALUE;
+				irc = ((MusicSelector) state).getCurrentRankingData();
+			} else if(state instanceof AbstractResult) {
+				irc = ((AbstractResult) state).getRankingData();
 			}
-			return Integer.MIN_VALUE;
+			return irc != null && irc.getState() == RankingData.FINISH && irc.getTotalPlayer() > 0 ?
+					(afterdot ? (irc.getClearCount(clearType) * 1000 / irc.getTotalPlayer()) % 10 : irc.getClearCount(clearType) * 100 / irc.getTotalPlayer()) : Integer.MIN_VALUE;
 		}		
 	}
 	
@@ -1140,15 +1227,18 @@ public class IntegerPropertyFactory {
 		}
 		@Override
 		public int get(MainState state) {
+			RankingData irc = null;
 			if (state instanceof MusicSelector) {
-				final RankingData irc = ((MusicSelector) state).getCurrentRankingData();
-				if(irc != null && irc.getState() == RankingData.FINISH && irc.getTotalPlayer() > 0) {
-					int count = 0;
-					for(int c : clearType) {
-						count += irc.getClearCount(c);
-					}
-					return (afterdot ? (count * 1000 / irc.getTotalPlayer()) % 10 : count * 100 / irc.getTotalPlayer());
+				irc = ((MusicSelector) state).getCurrentRankingData();
+			} else if(state instanceof AbstractResult) {
+				irc = ((AbstractResult) state).getRankingData();
+			}
+			if(irc != null && irc.getState() == RankingData.FINISH && irc.getTotalPlayer() > 0) {
+				int count = 0;
+				for(int c : clearType) {
+					count += irc.getClearCount(c);
 				}
+				return (afterdot ? (count * 1000 / irc.getTotalPlayer()) % 10 : count * 100 / irc.getTotalPlayer());
 			}
 			return Integer.MIN_VALUE;
 		}		
