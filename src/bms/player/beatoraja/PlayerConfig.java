@@ -2,18 +2,11 @@ package bms.player.beatoraja;
 
 import java.io.*;
 import java.nio.file.*;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.logging.Logger;
 
-import javax.crypto.*;
-import javax.crypto.spec.SecretKeySpec;
-
 import bms.player.beatoraja.ir.IRConnectionManager;
-import bms.player.beatoraja.pattern.LongNoteModifier;
-import bms.player.beatoraja.pattern.MineNoteModifier;
-import bms.player.beatoraja.pattern.ScrollSpeedModifier;
+import bms.player.beatoraja.pattern.*;
 import bms.player.beatoraja.play.GrooveGauge;
 import bms.player.beatoraja.play.TargetProperty;
 import bms.player.beatoraja.select.BarSorter;
@@ -133,6 +126,11 @@ public class PlayerConfig {
 	public static final int GAUGEAUTOSHIFT_BESTCLEAR = 3;
 	public static final int GAUGEAUTOSHIFT_SELECT_TO_UNDER = 4;
 
+	private int autosavereplay[];
+
+	// TODO Configから移行(0.8.2)。ある程度バージョンが進んだら消す
+	private static Config config;
+
 	/**
 	 * 7to9 スクラッチ鍵盤位置関係 0:OFF 1:SC1KEY2~8 2:SC1KEY3~9 3:SC2KEY3~9 4:SC8KEY1~7 5:SC9KEY1~7 6:SC9KEY2~8
 	 */
@@ -142,6 +140,11 @@ public class PlayerConfig {
 	 * 7to9 スクラッチ処理タイプ 0:そのまま 1:連打回避 2:交互
 	 */
 	private int sevenToNineType = 0;
+
+	/**
+	 * START+SELECTを押すと終了するまでの時間
+	 */
+	private int exitPressDuration = 1000;
 
 	/**
 	 * Guide SE
@@ -174,6 +177,14 @@ public class PlayerConfig {
 	private PlayModeConfig mode24 = new PlayModeConfig(Mode.KEYBOARD_24K);
 
 	private PlayModeConfig mode24double = new PlayModeConfig(Mode.KEYBOARD_24K_DOUBLE);
+	/**
+	 * HIDDENノートを表示するかどうか
+	 */
+	private boolean showhiddennote = false;
+	/**
+	 * 通過ノートを表示するかどうか
+	 */
+	private boolean showpastnote = false;
 	
 	/**
 	 * 選択中の選曲時ソート
@@ -184,10 +195,6 @@ public class PlayerConfig {
 	 * 選曲時でのキー入力方式
 	 */
 	private int musicselectinput = 0;
-
-	public static final int IR_SEND_ALWAYS = 0;
-	public static final int IR_SEND_COMPLETE_SONG = 1;
-	public static final int IR_SEND_UPDATE_SCORE = 2;
 
 	private IRConfig[] irconfig;
 	
@@ -324,7 +331,7 @@ public class PlayerConfig {
 	}
 
 	public PlayModeConfig getPlayConfig(Mode modeId) {
-		switch (modeId) {
+		switch (modeId != null ? modeId : Mode.BEAT_7K) {
 		case BEAT_5K:
 			return getMode5();
 		case BEAT_7K:
@@ -584,6 +591,14 @@ public class PlayerConfig {
 		this.sevenToNineType = sevenToNineType;
 	}
 
+	public int getExitPressDuration() {
+		return exitPressDuration;
+	}
+
+	public void setExitPressDuration(int exitPressDuration) {
+		this.exitPressDuration = exitPressDuration;
+	}
+
 	public boolean isGuideSE() {
 		return isGuideSE;
 	}
@@ -614,6 +629,30 @@ public class PlayerConfig {
 
 	public void setId(String id) {
 		this.id = id;
+	}
+
+	public void setAutoSaveReplay(int autoSaveReplay[]){
+		this.autosavereplay = autoSaveReplay;
+	}
+
+	public int[] getAutoSaveReplay(){
+		return autosavereplay;
+	}
+
+	public boolean isShowhiddennote() {
+		return showhiddennote;
+	}
+
+	public void setShowhiddennote(boolean showhiddennote) {
+		this.showhiddennote = showhiddennote;
+	}
+
+	public boolean isShowpastnote() {
+		return showpastnote;
+	}
+
+	public void setShowpastnote(boolean showpastnote) {
+		this.showpastnote = showpastnote;
 	}
 
 	public String getTwitterConsumerKey() {
@@ -712,8 +751,16 @@ public class PlayerConfig {
 		scratchJudgeWindowRateGreat = MathUtils.clamp(scratchJudgeWindowRateGreat, 0, 400);
 		scratchJudgeWindowRateGood = MathUtils.clamp(scratchJudgeWindowRateGood, 0, 400);
 		hranThresholdBPM = MathUtils.clamp(hranThresholdBPM, 1, 1000);
+		
+		if(autosavereplay == null) {
+			autosavereplay = config.autosavereplay != null ? config.autosavereplay.clone() : new int[4];
+		}
+		if(autosavereplay.length != 4) {
+			autosavereplay = Arrays.copyOf(autosavereplay, 4);
+		}
 		sevenToNinePattern = MathUtils.clamp(sevenToNinePattern, 0, 6);
 		sevenToNineType = MathUtils.clamp(sevenToNineType, 0, 2);
+		exitPressDuration = MathUtils.clamp(exitPressDuration, 0, 100000);
 
 		scrollMode = MathUtils.clamp(scrollMode, 0, ScrollSpeedModifier.Mode.values().length);
 		longnoteMode = MathUtils.clamp(longnoteMode, 0, LongNoteModifier.Mode.values().length);
@@ -744,6 +791,7 @@ public class PlayerConfig {
 	}
 
 	public static void init(Config config) {
+		PlayerConfig.config = config;
 		// TODO プレイヤーアカウント検証
 		try {
 			if(!Files.exists(Paths.get(config.getPlayerpath()))) {

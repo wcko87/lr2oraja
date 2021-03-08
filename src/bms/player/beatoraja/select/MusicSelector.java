@@ -19,6 +19,7 @@ import com.badlogic.gdx.utils.ObjectMap.Keys;
 import bms.model.BMSDecoder;
 import bms.model.Mode;
 import bms.player.beatoraja.*;
+import bms.player.beatoraja.Config.SongPreview;
 import bms.player.beatoraja.CourseData.CourseDataConstraint;
 import bms.player.beatoraja.PlayerResource.PlayMode;
 import bms.player.beatoraja.ScoreDatabaseAccessor.ScoreDataCollector;
@@ -275,6 +276,7 @@ public class MusicSelector extends MainState {
 			score.setPassnotes(irscore.passnotes != 0 ? irscore.notes : irscore.passnotes);
 			score.setMinbp(irscore.minbp);
 			score.setOption(irscore.option);
+			score.setSeed(irscore.seed);
 			score.setAssist(irscore.assist);
 			score.setGauge(irscore.gauge);
 			score.setDeviceType(irscore.deviceType);
@@ -372,7 +374,7 @@ public class MusicSelector extends MainState {
 		resource.setCourseData(current instanceof GradeBar ? ((GradeBar) current).getCourseData() : null);
 
 		// preview music
-		if (current instanceof SongBar && main.getConfig().isPlayPreview()) {
+		if (current instanceof SongBar && main.getConfig().getSongPreview() != SongPreview.NONE) {
 			final SongData song = main.getPlayerResource().getSongdata();
 			if (song != preview.getSongData() && main.getNowTime() > main.getTimer(TIMER_SONGBAR_CHANGE) + previewDuration
 					&& play == null) {
@@ -707,18 +709,6 @@ public class MusicSelector extends MainState {
 		case BUTTON_PRACTICE:
 			play = PlayMode.PRACTICE;
 			break;
-		case BUTTON_REPLAY:
-			play = PlayMode.REPLAY_1;
-			break;
-		case BUTTON_REPLAY2:
-			play = PlayMode.REPLAY_2;
-			break;
-		case BUTTON_REPLAY3:
-			play = PlayMode.REPLAY_3;
-			break;
-		case BUTTON_REPLAY4:
-			play = PlayMode.REPLAY_4;
-			break;
 		case BUTTON_READTEXT:
 			execute(MusicSelectCommand.OPEN_DOCUMENT);
 			break;
@@ -761,15 +751,6 @@ public class MusicSelector extends MainState {
 		case BUTTON_RIVAL:
 			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_RIVAL : MusicSelectCommand.PREV_RIVAL);
 			break;
-		case BUTTON_FAVORITTE_SONG:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_FAVORITE_SONG : MusicSelectCommand.PREV_FAVORITE_SONG);
-			break;
-		case BUTTON_FAVORITTE_CHART:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_FAVORITE_CHART : MusicSelectCommand.PREV_FAVORITE_CHART);
-			break;
-		case BUTTON_OPEN_IR_WEBSITE:
-			execute(MusicSelectCommand.OPEN_RANKING_ON_IR);
-			break;
 		case BUTTON_AUTOSAVEREPLAY_1:
 			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_AUTOSAVEREPLAY_1 : MusicSelectCommand.PREV_AUTOSAVEREPLAY_1);
 			break;
@@ -786,7 +767,7 @@ public class MusicSelector extends MainState {
 			super.executeEvent(id, arg1, arg2);
 		}
 	}
-
+	
 	public Bar getSelectedBar() {
 		return bar.getSelected();
 	}
@@ -841,11 +822,7 @@ public class MusicSelector extends MainState {
 	}
 
 	public void selectSong(PlayMode mode) {
-		if (!mode.isReplayMode()) {
-			play = mode;
-		} else {
-			play = (selectedreplay >= 0) ? PlayMode.getReplayMode(selectedreplay) : PlayMode.PLAY;
-		}
+		play = mode;
 	}
 
 	public PlayConfig getSelectedBarPlayConfig() {
@@ -866,6 +843,8 @@ public class MusicSelector extends MainState {
 					break;
 				}
 			}
+		} else {
+			pc = main.getPlayerConfig().getPlayConfig(config.getMode()).getPlayconfig();
 		}
 		return pc;
 	}

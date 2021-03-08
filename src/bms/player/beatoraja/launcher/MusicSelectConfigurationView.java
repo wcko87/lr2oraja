@@ -4,10 +4,12 @@ import java.net.URL;
 import java.util.ResourceBundle;
 
 import bms.player.beatoraja.Config;
+import bms.player.beatoraja.Config.SongPreview;
 import bms.player.beatoraja.PlayerConfig;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 
 /**
  * 選曲コンフィグ
@@ -22,13 +24,18 @@ public class MusicSelectConfigurationView implements Initializable {
 	private NumericSpinner<Integer> scrolldurationhigh;
 
 	@FXML
+	private CheckBox analogScroll;
+	@FXML
+	private NumericSpinner<Integer> analogTicksPerScroll;
+
+	@FXML
 	private CheckBox folderlamp;
     @FXML
     private CheckBox useSongInfo;
 	@FXML
 	private CheckBox shownoexistingbar;
 	@FXML
-	private CheckBox playPreview;
+	private ComboBox<SongPreview> songPreview;
 	@FXML
 	private CheckBox randomselect;
 	@FXML
@@ -38,6 +45,7 @@ public class MusicSelectConfigurationView implements Initializable {
     private PlayerConfig player;
 
 	public void initialize(URL arg0, ResourceBundle arg1) {
+		songPreview.getItems().setAll(SongPreview.values());
 	}
 
 	public void update(Config config) {
@@ -45,11 +53,14 @@ public class MusicSelectConfigurationView implements Initializable {
 		
 		scrolldurationlow.getValueFactory().setValue(config.getScrollDurationLow());
 		scrolldurationhigh.getValueFactory().setValue(config.getScrollDurationHigh());
+		
+		analogScroll.setSelected(config.isAnalogScroll());
+		analogTicksPerScroll.getValueFactory().setValue(config.getAnalogTicksPerScroll());
 
         useSongInfo.setSelected(config.isUseSongInfo());
 		folderlamp.setSelected(config.isFolderlamp());
 		shownoexistingbar.setSelected(config.isShowNoSongExistingBar());
-		playPreview.setSelected(config.isPlayPreview());
+		songPreview.setValue(config.getSongPreview());
 		
 		maxsearchbar.getValueFactory().setValue(config.getMaxSearchBarCount());
 	}
@@ -58,10 +69,13 @@ public class MusicSelectConfigurationView implements Initializable {
 		config.setScrollDutationLow(scrolldurationlow.getValue());
 		config.setScrollDutationHigh(scrolldurationhigh.getValue());
 
+		config.setAnalogScroll(analogScroll.isSelected());
+		config.setAnalogTicksPerScroll(analogTicksPerScroll.getValue());
+
         config.setUseSongInfo(useSongInfo.isSelected());
         config.setFolderlamp(folderlamp.isSelected());
         config.setShowNoSongExistingBar(shownoexistingbar.isSelected());
-        config.setPlayPreview(playPreview.isSelected());
+        config.setSongPreview(songPreview.getValue());
         
         config.setMaxSearchBarCount(maxsearchbar.getValue());
 	}

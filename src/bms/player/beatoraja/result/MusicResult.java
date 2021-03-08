@@ -65,7 +65,7 @@ public class MusicResult extends AbstractResult {
 		// リプレイの自動保存
 		if (resource.getPlayMode() == PlayMode.PLAY) {
 			for (int i = 0; i < REPLAY_SIZE; i++) {
-				if (ReplayAutoSaveConstraint.get(resource.getConfig().getAutoSaveReplay()[i]).isQualified(oldscore,
+				if (ReplayAutoSaveConstraint.get(resource.getPlayerConfig().getAutoSaveReplay()[i]).isQualified(oldscore,
 						resource.getScoreData())) {
 					saveReplayData(i);
 				}
@@ -317,7 +317,7 @@ public class MusicResult extends AbstractResult {
 		}
 	}
 
-	private void saveReplayData(int index) {
+	public void saveReplayData(int index) {
 		final PlayerResource resource = main.getPlayerResource();
 		if (resource.getPlayMode() == PlayMode.PLAY && resource.getCourseBMSModels() == null
 				&& resource.getScoreData() != null) {
@@ -486,34 +486,6 @@ public class MusicResult extends AbstractResult {
 		return resource.getBMSModel().getTotalNotes();
 	}
 
-	public void executeEvent(int id, int arg1, int arg2) {
-		switch (id) {
-		case BUTTON_REPLAY:
-			saveReplayData(0);
-			break;
-		case BUTTON_REPLAY2:
-			saveReplayData(1);
-			break;
-		case BUTTON_REPLAY3:
-			saveReplayData(2);
-			break;
-		case BUTTON_REPLAY4:
-			saveReplayData(3);
-			break;
-		case BUTTON_OPEN_IR_WEBSITE:
-			execute(MusicResultCommand.OPEN_RANKING_ON_IR);
-			break;
-		case BUTTON_FAVORITTE_CHART:
-			execute(MusicResultCommand.CHANGE_FAVORITE_CHART, arg1 >= 0);
-			break;
-		case BUTTON_FAVORITTE_SONG:
-			execute(MusicResultCommand.CHANGE_FAVORITE_SONG, arg1 >= 0);
-			break;
-		default:
-			super.executeEvent(id, arg1, arg2);
-		}
-	}
-	
 	public ScoreData getNewScore() {
 		return main.getPlayerResource().getScoreData();
 	}

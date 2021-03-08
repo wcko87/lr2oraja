@@ -43,7 +43,6 @@ public class LaneRenderer {
 	private BitmapFont font;
 	private final PlaySkin skin;
 
-	private final Config conf;
 	private final PlayerConfig config;
 	private PlayConfig playconfig;
 
@@ -79,7 +78,6 @@ public class LaneRenderer {
 		generator.dispose();
 
 		this.skin = (PlaySkin) main.getSkin();
-		this.conf = main.main.getPlayerResource().getConfig();
 		this.config = main.main.getPlayerResource().getPlayerConfig();
 		this.playconfig = config.getPlayConfig(model.getMode()).getPlayconfig().clone();
 
@@ -196,12 +194,16 @@ public class LaneRenderer {
 	public float getLanecover() {
 		return playconfig.getLanecover();
 	}
+
+	public void resetHispeed(double targetbpm) {
+		if (playconfig.getFixhispeed() != PlayConfig.FIX_HISPEED_OFF) {
+			playconfig.setHispeed((float) ((2400f / (targetbpm / 100) / playconfig.getDuration()) * (1 - (playconfig.isEnablelanecover() ? playconfig.getLanecover() : 0))));
+		}
+	}
 	
 	public void setLanecover(float lanecover) {
 		playconfig.setLanecover(lanecover < 0 ? 0 : (lanecover > 1 ? 1 : lanecover));
-		if (playconfig.getFixhispeed() != PlayConfig.FIX_HISPEED_OFF) {
-			playconfig.setHispeed((float) ((2400f / (basebpm / 100) / playconfig.getDuration()) * (1 - (playconfig.isEnablelanecover() ? playconfig.getLanecover() : 0))));
-		}
+		resetHispeed(basebpm);
 	}
 
 	public void setEnableLanecover(boolean b) {
@@ -388,7 +390,7 @@ public class LaneRenderer {
 					if (note != null && ((note instanceof LongNote
 							&& (((LongNote) note).isEnd() ? (LongNote) note : ((LongNote) note).getPair())
 									.getMicroTime() >= microtime)
-							|| (conf.isShowpastnote() && note instanceof NormalNote && note.getState() == 0))) {
+							|| (config.isShowpastnote() && note instanceof NormalNote && note.getState() == 0))) {
 						b = false;
 						break;
 					}
@@ -451,7 +453,7 @@ public class LaneRenderer {
 								? lanes[lane].processedImage : lanes[lane].noteImage;
 								sprite.draw(s, dstx, dsty, dstw, dsth);
 							}
-						} else if (tl.getMicroTime() >= microtime || (conf.isShowpastnote() && note.getState() == 0)) {
+						} else if (tl.getMicroTime() >= microtime || (config.isShowpastnote() && note.getState() == 0)) {
 							final TextureRegion s = config.isMarkprocessednote() && note.getState() != 0
 									? lanes[lane].processedImage : lanes[lane].noteImage;
 							sprite.draw(s, dstx, dsty, dstw, dsth);
@@ -498,7 +500,7 @@ public class LaneRenderer {
 					}
 				}
 				// hidden note
-				if (conf.isShowhiddennote() && tl.getMicroTime() >= microtime) {
+				if (config.isShowhiddennote() && tl.getMicroTime() >= microtime) {
 					final Note hnote = tl.getHiddenNote(lane);
 					if (hnote != null) {
 						sprite.draw(lanes[lane].hiddenImage, lanes[lane].region.x, (float) y, lanes[lane].region.width, scale);

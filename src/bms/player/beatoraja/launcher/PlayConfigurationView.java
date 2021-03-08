@@ -100,6 +100,8 @@ public class PlayConfigurationView implements Initializable {
 	private Spinner<Integer> gvalue;
 	@FXML
 	private Spinner<Double> hispeedmargin;
+	@FXML
+	private CheckBox hispeedautoadjust;
 
 	@FXML
 	private ComboBox<Integer> scoreop;
@@ -169,6 +171,8 @@ public class PlayConfigurationView implements Initializable {
 	private ComboBox<Integer> seventoninepattern;
 	@FXML
 	private ComboBox<Integer> seventoninetype;
+	@FXML
+	private Spinner<Integer> exitpressduration;
 	@FXML
 	private CheckBox guidese;
 	@FXML
@@ -343,20 +347,13 @@ public class PlayConfigurationView implements Initializable {
 
 		players.getItems().setAll(PlayerConfig.readAllPlayerID(config.getPlayerpath()));
 		videoController.update(config);
-		audioController.update(config);
+		audioController.update(config.getAudioConfig());
 		musicselectController.update(config);
 
 		bgmpath.setText(config.getBgmpath());
 		soundpath.setText(config.getSoundpath());
 
 		resourceController.update(config);
-
-		showhiddennote.setSelected(config.isShowhiddennote());
-
-		autosavereplay1.getSelectionModel().select(config.getAutoSaveReplay()[0]);
-		autosavereplay2.getSelectionModel().select(config.getAutoSaveReplay()[1]);
-		autosavereplay3.getSelectionModel().select(config.getAutoSaveReplay()[2]);
-		autosavereplay4.getSelectionModel().select(config.getAutoSaveReplay()[3]);
 
 		skinController.update(config);
         // int b = Boolean.valueOf(config.getJKOC()).compareTo(false);
@@ -418,6 +415,7 @@ public class PlayConfigurationView implements Initializable {
 		doubleop.getSelectionModel().select(player.getDoubleoption());
 		seventoninepattern.getSelectionModel().select(player.getSevenToNinePattern());
 		seventoninetype.getSelectionModel().select(player.getSevenToNineType());
+		exitpressduration.getValueFactory().setValue(player.getExitPressDuration());
 		guidese.setSelected(player.isGuideSE());
 		windowhold.setSelected(player.isWindowHold());
 		gaugeop.getSelectionModel().select(player.getGauge());
@@ -444,7 +442,13 @@ public class PlayConfigurationView implements Initializable {
 		markprocessednote.setSelected(player.isMarkprocessednote());
 		extranotedepth.getValueFactory().setValue(player.getExtranoteDepth());
 
+		autosavereplay1.getSelectionModel().select(player.getAutoSaveReplay()[0]);
+		autosavereplay2.getSelectionModel().select(player.getAutoSaveReplay()[1]);
+		autosavereplay3.getSelectionModel().select(player.getAutoSaveReplay()[2]);
+		autosavereplay4.getSelectionModel().select(player.getAutoSaveReplay()[3]);
+
 		target.setValue(player.getTarget());
+		showhiddennote.setSelected(player.isShowhiddennote());
 
 		irController.update(player);
 
@@ -479,11 +483,6 @@ public class PlayConfigurationView implements Initializable {
 
 		resourceController.commit(config);
 
-		config.setShowhiddennote(showhiddennote.isSelected());
-
-		config.setAutoSaveReplay( new int[]{autosavereplay1.getValue(),autosavereplay2.getValue(),
-				autosavereplay3.getValue(),autosavereplay4.getValue()});
-
         // jkoc_hack is integer but *.setJKOC needs boolean type
 
         config.setCacheSkinImage(usecim.isSelected());
@@ -514,6 +513,7 @@ public class PlayConfigurationView implements Initializable {
 		player.setDoubleoption(doubleop.getValue());
 		player.setSevenToNinePattern(seventoninepattern.getValue());
 		player.setSevenToNineType(seventoninetype.getValue());
+		player.setExitPressDuration(getValue(exitpressduration));
 		player.setGuideSE(guidese.isSelected());
 		player.setWindowHold(windowhold.isSelected());
 		player.setGauge(gaugeop.getValue());
@@ -537,8 +537,13 @@ public class PlayConfigurationView implements Initializable {
 		player.setMarkprocessednote(markprocessednote.isSelected());
 		player.setExtranoteDepth(extranotedepth.getValue());
 
+		player.setAutoSaveReplay( new int[]{autosavereplay1.getValue(),autosavereplay2.getValue(),
+				autosavereplay3.getValue(),autosavereplay4.getValue()});
+
 		player.setShowjudgearea(judgeregion.isSelected());
 		player.setTarget(target.getValue());
+
+		player.setShowhiddennote(showhiddennote.isSelected());
 
 		inputController.commit();
 		irController.commit();
@@ -599,7 +604,7 @@ public class PlayConfigurationView implements Initializable {
 			conf.setLift(getValue(lift) / 1000f);
 			conf.setHidden(getValue(hidden) / 1000f);
 			conf.setJudgetype(JudgeAlgorithm.values()[judgealgorithm.getValue()].name());
-
+			conf.setHispeedAutoAdjust(hispeedautoadjust.isSelected());
 		}
 		pc = playconfig.getValue();
 		PlayConfig conf = player.getPlayConfig(Mode.valueOf(pc.name())).getPlayconfig();
@@ -617,6 +622,7 @@ public class PlayConfigurationView implements Initializable {
 		lift.getValueFactory().setValue((int) (conf.getLift() * 1000));
 		hidden.getValueFactory().setValue((int) (conf.getHidden() * 1000));
 		judgealgorithm.setValue(JudgeAlgorithm.getIndex(conf.getJudgetype()));
+		hispeedautoadjust.setSelected(conf.isEnableHispeedAutoAdjust());
 	}
 
 	private <T> T getValue(Spinner<T> spinner) {

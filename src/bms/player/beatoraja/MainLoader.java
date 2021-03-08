@@ -25,13 +25,17 @@ import javafx.scene.layout.VBox;
 
 import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
 import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
+import com.badlogic.gdx.utils.Json;
 
+import bms.player.beatoraja.AudioConfig.DriverType;
 import bms.player.beatoraja.PlayerResource.PlayMode;
 import bms.player.beatoraja.ir.IRConnectionManager;
 import bms.player.beatoraja.launcher.PlayConfigurationView;
 import bms.player.beatoraja.song.SQLiteSongDatabaseAccessor;
+import bms.player.beatoraja.song.SongData;
 import bms.player.beatoraja.song.SongDatabaseAccessor;
 import bms.player.beatoraja.song.SongInformationAccessor;
+import bms.player.beatoraja.song.SongUtils;
 
 /**
  * 起動用クラス
@@ -108,7 +112,10 @@ public class MainLoader extends Application {
 		if(config == null) {
 			config = Config.read();			
 		}
-		
+
+		for(SongData song : getScoreDatabaseAccessor().getSongDatas(SongUtils.illegalsongs)) {
+			MainLoader.putIllegalSong(song.getSha256());
+		}		
 		if(illegalSongs.size() > 0) {
 			JOptionPane.showMessageDialog(null, "This Application detects " + illegalSongs.size() + " illegal BMS songs. \n Remove them, update song database and restart.", "Error", JOptionPane.ERROR_MESSAGE);
 			System.exit(1);
@@ -140,10 +147,10 @@ public class MainLoader extends Application {
 			cfg.foregroundFPS = config.getMaxFramePerSecond();
 			cfg.title = MainController.getVersion();
 			
-			cfg.audioDeviceBufferSize = config.getAudioDeviceBufferSize();
-			cfg.audioDeviceSimultaneousSources = config.getAudioDeviceSimultaneousSources();
+			cfg.audioDeviceBufferSize = config.getAudioConfig().getDeviceBufferSize();
+			cfg.audioDeviceSimultaneousSources = config.getAudioConfig().getDeviceSimultaneousSources();
 			cfg.forceExit = forceExit;
-			if(config.getAudioDriver() != Config.AUDIODRIVER_SOUND && config.getAudioDriver() != Config.AUDIODRIVER_AUDIODEVICE) {
+			if(config.getAudioConfig().getDriver() != DriverType.OpenAL) {
 				LwjglApplicationConfiguration.disableAudio = true;				
 			}
 			// System.setProperty("org.lwjgl.opengl.Display.allowSoftwareOpenGL",

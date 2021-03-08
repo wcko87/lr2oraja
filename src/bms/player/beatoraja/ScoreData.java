@@ -98,6 +98,10 @@ public class ScoreData implements Validatable {
 	 */
 	private int option;
 	/**
+	 * オプションのRandom Seed
+	 */	
+	private long seed = -1;
+	/**
 	 * アシストオプション
 	 */
 	private int assist;
@@ -373,6 +377,15 @@ public class ScoreData implements Validatable {
 	public void setRandom(int random) {
 		this.random = random;
 	}
+	
+	public long getSeed() {
+		return seed;
+	}
+
+	public void setSeed(long seed) {
+		this.seed = seed;
+	}
+
 	public String getScorehash() {
 		return scorehash;
 	}
@@ -474,13 +487,24 @@ public class ScoreData implements Validatable {
 	 * @return スコアデータが更新された場合はtrue
 	 */
 	public boolean update(ScoreData newscore) {
+		return update(newscore, true);
+	}
+
+	/**
+	 * 指定したスコアデータを元に更新する
+	 * @param newscore スコアデータ
+	 * @param updateScore スコアを更新するかどうか。falseの場合はクリアのみ更新対象にする
+	 * @return スコアデータが更新された場合はtrue
+	 */
+	public boolean update(ScoreData newscore, boolean updateScore) {
 		boolean update = false;
 		if (clear < newscore.getClear()) {
 			setClear(newscore.getClear());
 			setOption(newscore.getOption());
+			setSeed(newscore.getSeed());
 			update = true;
 		}
-		if (getExscore() < newscore.getExscore()) {
+		if (getExscore() < newscore.getExscore() && updateScore) {
 			setEpg(newscore.getEpg());
 			setLpg(newscore.getLpg());
 			setEgr(newscore.getEgr());
@@ -494,17 +518,20 @@ public class ScoreData implements Validatable {
 			setEms(newscore.getEms());
 			setLms(newscore.getLms());
 			setOption(newscore.getOption());
+			setSeed(newscore.getSeed());
 			setGhost(newscore.getGhost());
 			update = true;
 		}
-		if (getMinbp() > newscore.getMinbp()) {
+		if (getMinbp() > newscore.getMinbp() && updateScore) {
 			setMinbp(newscore.getMinbp());
 			setOption(newscore.getOption());
+			setSeed(newscore.getSeed());
 			update = true;
 		}
-		if (getCombo() < newscore.getCombo()) {
+		if (getCombo() < newscore.getCombo() && updateScore) {
 			setCombo(newscore.getCombo());
 			setOption(newscore.getOption());
+			setSeed(newscore.getSeed());
 			update = true;
 		}
 		return update;
