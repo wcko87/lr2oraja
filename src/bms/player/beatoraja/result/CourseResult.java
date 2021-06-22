@@ -3,9 +3,7 @@ package bms.player.beatoraja.result;
 import static bms.player.beatoraja.ClearType.*;
 import static bms.player.beatoraja.skin.SkinProperty.*;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.logging.Logger;
 
 import bms.player.beatoraja.input.KeyCommand;
@@ -14,14 +12,11 @@ import com.badlogic.gdx.utils.FloatArray;
 import bms.model.BMSModel;
 import bms.player.beatoraja.*;
 import bms.player.beatoraja.MainController.IRStatus;
-import bms.player.beatoraja.PlayerResource.PlayMode;
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
-import bms.player.beatoraja.ir.IRConnection;
-import bms.player.beatoraja.ir.IRCourseData;
-import bms.player.beatoraja.ir.IRResponse;
-import bms.player.beatoraja.ir.RankingData;
+import bms.player.beatoraja.ir.*;
 import bms.player.beatoraja.select.MusicSelector;
 import bms.player.beatoraja.skin.SkinType;
+import bms.player.beatoraja.skin.property.EventFactory.EventType;
 
 /**
  * コースリザルト
@@ -71,7 +66,7 @@ public class CourseResult extends AbstractResult {
 		updateScoreDatabase();
 
 		// リプレイの自動保存
-		if(resource.getPlayMode() == PlayMode.PLAY){
+		if(resource.getPlayMode().mode == BMSPlayerMode.Mode.PLAY){
 			for(int i=0;i<REPLAY_SIZE;i++){
 				if(MusicResult.ReplayAutoSaveConstraint.get(resource.getPlayerConfig().getAutoSaveReplay()[i]).isQualified(oldscore ,getNewScore())) {
 					saveReplayData(i);
@@ -91,7 +86,7 @@ public class CourseResult extends AbstractResult {
 		ranking = resource.getRankingData() != null && resource.getCourseBMSModels() == null ? resource.getRankingData() : new RankingData();
 
 		final IRStatus[] ir = main.getIRStatus();
-		if (ir.length > 0 && resource.getPlayMode() == PlayMode.PLAY) {
+		if (ir.length > 0 && resource.getPlayMode().mode == BMSPlayerMode.Mode.PLAY) {
 			state = STATE_IR_PROCESSING;
 			
 			boolean uln = false;
@@ -243,7 +238,7 @@ public class CourseResult extends AbstractResult {
 			}
 
 			if(inputProcessor.isActivated(KeyCommand.OPEN_IR)) {
-				this.execute(CourseResultCommand.OPEN_RANKING_ON_IR);
+				this.executeEvent(EventType.open_ir);
 			}
 		}
 	}
@@ -314,7 +309,7 @@ public class CourseResult extends AbstractResult {
 
 	public void saveReplayData(int index) {
 		final PlayerResource resource = main.getPlayerResource();
-		if (resource.getPlayMode() == PlayMode.PLAY && resource.getCourseScoreData() != null) {
+		if (resource.getPlayMode().mode == BMSPlayerMode.Mode.PLAY && resource.getCourseScoreData() != null) {
 			if (saveReplay[index] != ReplayStatus.SAVED && resource.isUpdateCourseScore()) {
 				// 保存されているリプレイデータがない場合は、EASY以上で自動保存
 				ReplayData[] rd = resource.getCourseReplay();
@@ -332,10 +327,6 @@ public class CourseResult extends AbstractResult {
 		return main.getPlayerResource().getCourseScoreData();
 	}
 
-	public void execute(CourseResultCommand command) {
-		command.execute(this);
-	}
-	
 	static class IRSendStatus {
 		public final IRConnection ir;
 		public final CourseData course;

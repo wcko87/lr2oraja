@@ -132,7 +132,8 @@ public class BMSPlayerInputProcessor {
 	boolean mousedragged;
 	private boolean mouseMoved = false;
 
-	int scroll;
+	float scrollX;
+	float scrollY;
 
 	private boolean startPressed;
 	private boolean selectPressed;
@@ -154,6 +155,7 @@ public class BMSPlayerInputProcessor {
 	public void setControllerConfig(ControllerConfig[] configs) {
 		boolean[] b = new boolean[configs.length];
 		for (BMControllerInputProcessor controller : bminput) {
+			controller.setEnable(false);
 			for(int i = 0;i < configs.length;i++) {
 				if(b[i]) {
 					continue;
@@ -163,6 +165,7 @@ public class BMSPlayerInputProcessor {
 				}
 				if(controller.getName().equals(configs[i].getName())) {
 					controller.setConfig(configs[i]);
+					controller.setEnable(true);
 					b[i] = true;
 					break;
 				}
@@ -505,11 +508,19 @@ public class BMSPlayerInputProcessor {
 	}
 
 	public int getScroll() {
-		return scroll;
+		return (int) -scrollY;
+	}
+
+	public float getScrollX() {
+		return scrollX;
+	}
+
+	public float getScrollY() {
+		return scrollY;
 	}
 
 	public void resetScroll() {
-		scroll = 0;
+		scrollX = scrollY = 0;
 	}
 
 	public void poll() {

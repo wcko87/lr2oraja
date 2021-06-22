@@ -11,6 +11,7 @@ import java.nio.file.*;
 import java.util.logging.Logger;
 
 import bms.player.beatoraja.ir.IRPlayerData;
+
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.*;
@@ -21,7 +22,6 @@ import bms.model.Mode;
 import bms.player.beatoraja.*;
 import bms.player.beatoraja.Config.SongPreview;
 import bms.player.beatoraja.CourseData.CourseDataConstraint;
-import bms.player.beatoraja.PlayerResource.PlayMode;
 import bms.player.beatoraja.ScoreDatabaseAccessor.ScoreDataCollector;
 import bms.player.beatoraja.external.ScoreDataImporter;
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
@@ -92,8 +92,9 @@ public class MusicSelector extends MainState {
 	private RankingData currentir;
 	private RankingDataCache ircache = new RankingDataCache();
 
-	private ObjectMap<PlayerInformation, ScoreDataCache> rivalcaches = new ObjectMap<PlayerInformation, ScoreDataCache>();
 	private PlayerInformation rival;
+	private PlayerInformation[] rivals = new PlayerInformation[0];
+	private ScoreDataCache[] rivalcaches = new ScoreDataCache[0];
 
 	private int panelstate;
 
@@ -105,7 +106,7 @@ public class MusicSelector extends MainState {
 	public static final int SOUND_OPTIONOPEN = 5;
 	public static final int SOUND_OPTIONCLOSE = 6;
 
-	private PlayMode play = null;
+	private BMSPlayerMode play = null;
 
 	private SongData playedsong = null;
 	private CourseData playedcourse = null;
@@ -163,6 +164,9 @@ public class MusicSelector extends MainState {
 					}
 
 					// ライバルキャッシュ作成
+					Array<PlayerInformation> rivals = new Array();
+					Array<ScoreDataCache> rivalcaches = new Array();
+					
 					if(main.getIRStatus()[0].config.isImportrival()) {
 						for(IRPlayerData irplayer : response.getData()) {
 							final PlayerInformation rival = new PlayerInformation();
@@ -170,7 +174,9 @@ public class MusicSelector extends MainState {
 							rival.setName(irplayer.name);
 							rival.setRank(irplayer.rank);
 							final ScoreDatabaseAccessor scoredb = new ScoreDatabaseAccessor("rival/" + main.getIRStatus()[0].config.getIrname() + rival.getId() + ".db");
-							rivalcaches.put(rival,  new ScoreDataCache() {
+							
+							rivals.add(rival);
+							rivalcaches.add(new ScoreDataCache() {
 
 								@Override
 								protected ScoreData readScoreDatasFromSource(SongData song, int lnmode) {
@@ -192,13 +198,13 @@ public class MusicSelector extends MainState {
 									Logger.getGlobal().warning("IRからのライバルスコア取得失敗 : " + scores.getMessage());
 								}
 							}).start();
-						}						
+						}
 					}
 					
 					try (DirectoryStream<Path> paths = Files.newDirectoryStream(Paths.get("rival"))) {
 						for (Path p : paths) {
 							boolean exists = false;
-							for(PlayerInformation info : rivalcaches.keys()) {
+							for(PlayerInformation info : rivals) {
 								if(p.getFileName().toString().equals(main.getIRStatus()[0].config.getIrname() + info.getId() + ".db")) {
 									exists = true;
 									break;
@@ -212,7 +218,8 @@ public class MusicSelector extends MainState {
 								final ScoreDatabaseAccessor scoredb = new ScoreDatabaseAccessor(p.toString());
 								PlayerInformation info = scoredb.getInformation();
 								if(info != null) {
-									rivalcaches.put(info,  new ScoreDataCache() {
+									rivals.add(info);
+									rivalcaches.add(new ScoreDataCache() {
 
 										@Override
 										protected ScoreData readScoreDatasFromSource(SongData song, int lnmode) {
@@ -230,6 +237,8 @@ public class MusicSelector extends MainState {
 					} catch (Throwable e) {
 						e.printStackTrace();
 					}
+					this.rivals = rivals.toArray(PlayerInformation.class);
+					this.rivalcaches = rivalcaches.toArray(ScoreDataCache.class);
 
 				} catch (Throwable e) {
 					e.printStackTrace();
@@ -287,10 +296,16 @@ public class MusicSelector extends MainState {
 	}
 
 	public void setRival(PlayerInformation rival) {
-		this.rival = rival;
-		rivalcache = rival != null ? rivalcaches.get(rival) : null;
+		int index = -1;
+		for(int i = 0;i < rivals.length;i++) {
+			if(rival == rivals[i]) {
+				index = i;
+				break;
+			}
+		}
+		this.rival = index != -1 ? rivals[index] : null;
+		rivalcache = index != -1 ? rivalcaches[index] : null;
 		bar.updateBar();
-
 		Logger.getGlobal().info("Rival変更:" + (rival != null ? rival.getName() : "なし"));
 	}
 
@@ -298,8 +313,8 @@ public class MusicSelector extends MainState {
 		return rival;
 	}
 
-	public Keys<PlayerInformation> getRivals() {
-		return rivalcaches.keys();
+	public PlayerInformation[] getRivals() {
+		return rivals;
 	}
 
 	public ScoreDataCache getScoreDataCache() {
@@ -429,8 +444,8 @@ public class MusicSelector extends MainState {
 					resource.clear();
 					if (resource.setBMSFile(Paths.get(song.getPath()), play)) {
 						final Queue<DirectoryBar> dir = this.getBarRender().getDirectory();
-						if(!(dir.last() instanceof SameFolderBar)) {
-							Array<String> urls = new Array(main.getConfig().getTableURL());
+						if(dir.size > 0 && !(dir.last() instanceof SameFolderBar)) {
+							Array<String> urls = new Array<String>(main.getConfig().getTableURL());
 
 							boolean isdtable = false;
 							for (DirectoryBar bar : dir) {
@@ -469,8 +484,8 @@ public class MusicSelector extends MainState {
 				resource.clear();
 				if (resource.setBMSFile(Paths.get(song.getPath()), play)) {
 					final Queue<DirectoryBar> dir = this.getBarRender().getDirectory();
-					if(!(dir.last() instanceof SameFolderBar)) {
-						Array<String> urls = new Array(main.getConfig().getTableURL());
+					if(dir.size > 0 && !(dir.last() instanceof SameFolderBar)) {
+						Array<String> urls = new Array<String>(main.getConfig().getTableURL());
 
 						boolean isdtable = false;
 						for (DirectoryBar bar : dir) {
@@ -493,12 +508,12 @@ public class MusicSelector extends MainState {
 					main.getMessageRenderer().addMessage("Failed to loading BMS : Song not found, or Song has error", 1200, Color.RED, 1);
 				}
 			}else if (current instanceof GradeBar) {
-				if (play == PlayMode.PRACTICE) {
-					play = PlayMode.PLAY;
+				if (play.mode == BMSPlayerMode.Mode.PRACTICE) {
+					play = BMSPlayerMode.PLAY;
 				}
 				readCourse(play);
 			} else if (current instanceof DirectoryBar) {
-				if(play.isAutoPlayMode()) {
+				if(play.mode == BMSPlayerMode.Mode.AUTOPLAY) {
 					Array<Path> paths = new Array<Path>();
 					for(Bar bar : ((DirectoryBar) current).getChildren()) {
 						if(bar instanceof SongBar && ((SongBar) bar).getSongData() != null && ((SongBar) bar).getSongData().getPath() != null) {
@@ -530,7 +545,7 @@ public class MusicSelector extends MainState {
 		musicinput.input();
 	}
 	
-	void changeState(MainStateType type) {
+	public void changeState(MainStateType type) {
 		preview.stop();
 		main.changeState(type);
 		if (search != null) {
@@ -547,7 +562,7 @@ public class MusicSelector extends MainState {
 			}
 			execute(MusicSelectCommand.RESET_REPLAY);
 		} else {
-			play = PlayMode.PLAY;
+			play = BMSPlayerMode.PLAY;
 		}
 	}
 
@@ -563,7 +578,7 @@ public class MusicSelector extends MainState {
 		command.execute(this);
 	}
 
-	private void readCourse(PlayMode mode) {
+	private void readCourse(BMSPlayerMode mode) {
 		final PlayerResource resource = main.getPlayerResource();
 		final GradeBar course = (GradeBar) bar.getSelected();
 		if (!course.existsAllSongs()) {
@@ -579,7 +594,7 @@ public class MusicSelector extends MainState {
 			files[i++] = Paths.get(song.getPath());
 		}
 		if (resource.setCourseBMSFiles(files)) {
-			if (mode == PlayMode.PLAY || mode.isAutoPlayMode()) {
+			if (mode.mode == BMSPlayerMode.Mode.PLAY || mode.mode == BMSPlayerMode.Mode.AUTOPLAY) {
 				for (CourseData.CourseDataConstraint constraint : course.getCourseData().getConstraint()) {
 					switch (constraint) {
 					case CLASS:
@@ -692,82 +707,6 @@ public class MusicSelector extends MainState {
 		return false;
 	}
 
-	public void executeEvent(int id, int arg1, int arg2) {
-		switch (id) {
-		case BUTTON_KEYCONFIG:
-			changeState(MainStateType.CONFIG);
-			break;
-		case BUTTON_SKINSELECT:
-			changeState(MainStateType.SKINCONFIG);
-			break;
-		case BUTTON_PLAY:
-			play = PlayMode.PLAY;
-			break;
-		case BUTTON_AUTOPLAY:
-			play = PlayMode.AUTOPLAY;
-			break;
-		case BUTTON_PRACTICE:
-			play = PlayMode.PRACTICE;
-			break;
-		case BUTTON_READTEXT:
-			execute(MusicSelectCommand.OPEN_DOCUMENT);
-			break;
-		case BUTTON_MODE:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_MODE : MusicSelectCommand.PREV_MODE);
-			break;
-		case BUTTON_SORT:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_SORT : MusicSelectCommand.PREV_SORT);
-			break;
-		case BUTTON_LNMODE:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_LNMODE : MusicSelectCommand.PREV_LNMODE);
-			break;
-		case BUTTON_RANDOM_1P:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_OPTION_1P : MusicSelectCommand.PREV_OPTION_1P);
-			break;
-		case BUTTON_RANDOM_2P:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_OPTION_2P : MusicSelectCommand.PREV_OPTION_2P);
-			break;
-		case BUTTON_DPOPTION:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_OPTION_DP : MusicSelectCommand.PREV_OPTION_DP);
-			break;
-		case BUTTON_GAUGE_1P:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_GAUGE_1P : MusicSelectCommand.PREV_GAUGE_1P);
-			break;
-		case BUTTON_HSFIX:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_HSFIX : MusicSelectCommand.PREV_HSFIX);
-			break;
-		case BUTTON_TARGET:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_TARGET : MusicSelectCommand.PREV_TARGET);
-			break;
-		case BUTTON_BGA:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_BGA_SHOW : MusicSelectCommand.PREV_BGA_SHOW);
-			break;
-		case BUTTON_JUDGE_TIMING:
-			execute(arg1 >= 0 ? MusicSelectCommand.JUDGETIMING_UP : MusicSelectCommand.JUDGETIMING_DOWN);
-			break;			
-		case BUTTON_GAUGEAUTOSHIFT:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_GAUGEAUTOSHIFT : MusicSelectCommand.PREV_GAUGEAUTOSHIFT);
-			break;
-		case BUTTON_RIVAL:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_RIVAL : MusicSelectCommand.PREV_RIVAL);
-			break;
-		case BUTTON_AUTOSAVEREPLAY_1:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_AUTOSAVEREPLAY_1 : MusicSelectCommand.PREV_AUTOSAVEREPLAY_1);
-			break;
-		case BUTTON_AUTOSAVEREPLAY_2:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_AUTOSAVEREPLAY_2 : MusicSelectCommand.PREV_AUTOSAVEREPLAY_2);
-			break;
-		case BUTTON_AUTOSAVEREPLAY_3:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_AUTOSAVEREPLAY_3 : MusicSelectCommand.PREV_AUTOSAVEREPLAY_3);
-			break;
-		case BUTTON_AUTOSAVEREPLAY_4:
-			execute(arg1 >= 0 ? MusicSelectCommand.NEXT_AUTOSAVEREPLAY_4 : MusicSelectCommand.PREV_AUTOSAVEREPLAY_4);
-			break;
-		default:
-			super.executeEvent(id, arg1, arg2);
-		}
-	}
-	
 	public Bar getSelectedBar() {
 		return bar.getSelected();
 	}
@@ -821,7 +760,7 @@ public class MusicSelector extends MainState {
 				current instanceof SongBar ? ((SongBar) current).getStagefile() : null);
 	}
 
-	public void selectSong(PlayMode mode) {
+	public void selectSong(BMSPlayerMode mode) {
 		play = mode;
 	}
 

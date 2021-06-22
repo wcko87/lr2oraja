@@ -20,6 +20,11 @@ import com.badlogic.gdx.utils.GdxRuntimeException;
  * @author exch
  */
 public class FFmpegProcessor implements MovieProcessor {
+	private enum ProcessorStatus {
+		TEXTURE_INACTIVE,
+		TEXTURE_ACTIVE,
+		DISPOSED,
+	}
 
 	/**
 	 * 現在表示中のフレームのTexture
@@ -38,7 +43,7 @@ public class FFmpegProcessor implements MovieProcessor {
 	/**
 	 * dispose()を呼び出した後にprocessorDisposedはtrueになる
 	 */
-	private boolean processorDisposed = false;
+	private ProcessorStatus processorStatus = ProcessorStatus.TEXTURE_INACTIVE;
 
 	public FFmpegProcessor(int fpsd) {
 		this.fpsd = fpsd;
@@ -51,25 +56,28 @@ public class FFmpegProcessor implements MovieProcessor {
 
 	@Override
 	public Texture getFrame(long time) {
-		if (processorDisposed) return null;
 		this.time = time;
-		return showingtex;
+		if (processorStatus == ProcessorStatus.TEXTURE_ACTIVE) {
+			return showingtex;
+		} else {
+			return null;
+		}
 	}
 	
 	public void play(long time, boolean loop) {
-		if (processorDisposed) return;
+		if (processorStatus == ProcessorStatus.DISPOSED) return;
 		this.time = time;
 		movieseek.exec(loop ? Command.LOOP : Command.PLAY);
 	}
 
 	public void stop() {
-		if (processorDisposed) return;
+		if (processorStatus == ProcessorStatus.DISPOSED) return;
 		movieseek.exec(Command.STOP);
 	}
 
 	@Override
 	public void dispose() {
-		processorDisposed = true;
+		processorStatus = ProcessorStatus.DISPOSED;
 		if (movieseek != null) {
 			movieseek.exec(Command.HALT);
 			movieseek = null;
@@ -133,9 +141,6 @@ public class FFmpegProcessor implements MovieProcessor {
 								+ " length (frame / time) : " + grabber.getLengthInFrames() + " / "
 								+ grabber.getLengthInTime());
 
-				final long[] nativeData = { 0, grabber.getImageWidth(), grabber.getImageHeight(),
-						Gdx2DPixmap.GDX2D_FORMAT_RGB888 };
-
 				offset = grabber.getTimestamp();
 				Frame frame = null;
 				boolean halt = false;
@@ -143,6 +148,9 @@ public class FFmpegProcessor implements MovieProcessor {
 				while (!halt) {
 					final long microtime = time * 1000 + offset;
 					if (eof) {
+						if (processorStatus != ProcessorStatus.DISPOSED) {
+							processorStatus = ProcessorStatus.TEXTURE_INACTIVE;
+						}
 						try {
 							sleep(3600000);
 						} catch (InterruptedException e) {
@@ -165,12 +173,14 @@ public class FFmpegProcessor implements MovieProcessor {
 						} else if (frame.image != null && frame.image[0] != null) {
 							try {
 								if (pixmap == null) {
+									final long[] nativeData = { 0, frame.image[0].remaining() / frame.imageHeight / 3, frame.imageHeight,
+											Gdx2DPixmap.GDX2D_FORMAT_RGB888 };
 									pixmap = new Pixmap(new Gdx2DPixmap((ByteBuffer) frame.image[0], nativeData));
 								}
 								Gdx.app.postRunnable(() -> {
 									final Pixmap p = pixmap;
 									// dispose()を呼び出した後にshowingtexを使えばEXCEPTION_ACCESS_VIOLATIONが発生
-									if (p == null || processorDisposed) {
+									if (p == null || processorStatus == ProcessorStatus.DISPOSED) {
 										return;
 									}
 									if (showingtex != null) {
@@ -178,6 +188,7 @@ public class FFmpegProcessor implements MovieProcessor {
 									} else {
 										showingtex = new Texture(p);
 									}
+									processorStatus = ProcessorStatus.TEXTURE_ACTIVE;
 								});
 								// System.out.println("movie pixmap created : " + time);
 							} catch (Throwable e) {
@@ -229,7 +240,7 @@ public class FFmpegProcessor implements MovieProcessor {
 		private void restart() throws Exception {
 			pixmap = null;
 			grabber.restart();
-			grabber.grabFrame();
+			grabber.grabImage();
 			eof = false;
 			offset = grabber.getTimestamp() - time * 1000;
 			framecount = 1;
