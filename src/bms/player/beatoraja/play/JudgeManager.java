@@ -568,7 +568,7 @@ public class JudgeManager {
 							if (j >= 3) {
 								keysound.stop(processing[lane].getPair());
 							}
-							this.update(lane, processing[lane].getPair(), time, j, dtime);
+							this.update(lane, processing[lane].getPair(), time, Math.min(j, 3), dtime);
 							keysound.play(processing[lane], config.getAudioConfig().getKeyvolume(), 0);
 							processing[lane] = null;
 //							System.out.println("LN途中離し判定 - Time : " + ptime + " Judge : " + j + " LN : " + processing[lane]);	
