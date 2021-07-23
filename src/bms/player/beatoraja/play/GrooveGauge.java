@@ -218,6 +218,9 @@ public class GrooveGauge {
 		public void setValue(float value) {
 			if(this.value > 0f) {
 				this.value = MathUtils.clamp(value, element.min, element.max);				
+				if (this.value < element.death) {
+					this.value = 0;
+				}
 			}
 		}
 		
