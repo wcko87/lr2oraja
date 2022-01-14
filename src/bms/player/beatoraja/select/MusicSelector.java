@@ -26,6 +26,7 @@ import bms.player.beatoraja.ScoreDatabaseAccessor.ScoreDataCollector;
 import bms.player.beatoraja.external.ScoreDataImporter;
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
 import bms.player.beatoraja.input.KeyCommand;
+import bms.player.beatoraja.input.KeyBoardInputProcesseor.ControlKeys;
 import bms.player.beatoraja.ir.*;
 import bms.player.beatoraja.select.bar.*;
 import bms.player.beatoraja.skin.SkinType;
@@ -91,6 +92,10 @@ public class MusicSelector extends MainState {
 	
 	private RankingData currentir;
 	private RankingDataCache ircache = new RankingDataCache();
+	/**
+	 * ランキング表示位置
+	 */
+	protected int rankingOffset = 0;
 
 	private PlayerInformation rival;
 	private PlayerInformation[] rivals = new PlayerInformation[0];
@@ -542,7 +547,7 @@ public class MusicSelector extends MainState {
 	public void input() {
 		final BMSPlayerInputProcessor input = main.getInputProcessor();
 
-		if (input.getNumberState()[6]) {
+		if (input.getControlKeyState(ControlKeys.NUM6)) {
 			changeState(MainStateType.CONFIG);
 		} else if (input.isActivated(KeyCommand.OPEN_SKIN_CONFIGURATION)) {
 			changeState(MainStateType.SKINCONFIG);
@@ -801,6 +806,23 @@ public class MusicSelector extends MainState {
 	public long getCurrentRankingDuration() {
 		return currentRankingDuration;
 	}
+	
+	public int getRankingOffset() {
+		return rankingOffset;
+	}
+	
+	public float getRankingPosition() {
+		final int rankingMax = currentir != null ? Math.max(1, currentir.getTotalPlayer()) : 1;
+		return (float)rankingOffset / rankingMax;		
+	}
+	
+	public void setRankingPosition(float value) {
+		if (value >= 0 && value < 1) {
+			final int rankingMax = currentir != null ? Math.max(1, currentir.getTotalPlayer()) : 1;
+			rankingOffset = (int) (rankingMax * value);
+		}
+	}
+
 	/**
 	 * IRアクセスデータのキャッシュ
 	 *

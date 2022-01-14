@@ -45,6 +45,7 @@ import twitter4j.conf.ConfigurationBuilder;
  */
 public class PlayConfigurationView implements Initializable {
 
+
 	// TODO スキンプレビュー機能
 
 	@FXML
@@ -74,6 +75,8 @@ public class PlayConfigurationView implements Initializable {
 	private Tab irTab;
 	@FXML
 	private Tab courseTab;
+	@FXML
+    private Tab streamTab;
 	@FXML
 	private HBox controlPanel;
 
@@ -138,7 +141,9 @@ public class PlayConfigurationView implements Initializable {
 	private TextField soundpath;
 
 	@FXML
-	private NumericSpinner<Integer> judgetiming;
+	private NumericSpinner<Integer> notesdisplaytiming;
+	@FXML
+	private CheckBox notesdisplaytimingautoadjust;
 	@FXML
 	private CheckBox bpmguide;
 	@FXML
@@ -165,6 +170,8 @@ public class PlayConfigurationView implements Initializable {
 	private ComboBox<Integer> scrollmode;
 	@FXML
 	private ComboBox<Integer> longnotemode;
+	@FXML
+	private Slider longnoterate;
 	@FXML
 	private Spinner<Integer> hranthresholdbpm;
 	@FXML
@@ -241,6 +248,8 @@ public class PlayConfigurationView implements Initializable {
 	private IRConfigurationView irController;
 	@FXML
 	private TableEditorView tableController;
+	@FXML
+    private StreamEditorView streamController;
 
 	private Config config;
 	private PlayerConfig player;
@@ -250,6 +259,9 @@ public class PlayConfigurationView implements Initializable {
 	private boolean songUpdated = false;
 
 	private RequestToken requestToken = null;
+
+	@FXML
+	public CheckBox discord;
 
 	static void initComboBox(ComboBox<Integer> combo, final String[] values) {
 		combo.setCellFactory((param) -> new OptionListCell(values));
@@ -300,7 +312,7 @@ public class PlayConfigurationView implements Initializable {
 		initComboBox(autosavereplay3, autosaves);
 		initComboBox(autosavereplay4, autosaves);
 
-		judgetiming.setValueFactoryValues(PlayerConfig.JUDGETIMING_MIN, PlayerConfig.JUDGETIMING_MAX, 0, 1);
+		notesdisplaytiming.setValueFactoryValues(PlayerConfig.JUDGETIMING_MIN, PlayerConfig.JUDGETIMING_MAX, 0, 1);
 		resourceController.init(this);
 
 		checkNewVersion();
@@ -359,6 +371,7 @@ public class PlayConfigurationView implements Initializable {
         // int b = Boolean.valueOf(config.getJKOC()).compareTo(false);
 
         usecim.setSelected(config.isCacheSkinImage());
+        discord.setSelected(config.isUseDiscordRPC());
 
 		enableIpfs.setSelected(config.isEnableIpfs());
 		ipfsurl.setText(config.getIpfsUrl());
@@ -421,7 +434,8 @@ public class PlayConfigurationView implements Initializable {
 		gaugeop.getSelectionModel().select(player.getGauge());
 		lntype.getSelectionModel().select(player.getLnmode());
 
-		judgetiming.getValueFactory().setValue(player.getJudgetiming());
+		notesdisplaytiming.getValueFactory().setValue(player.getJudgetiming());
+		notesdisplaytimingautoadjust.setSelected(player.isNotesDisplayTimingAutoAdjust());
 
 		bpmguide.setSelected(player.isBpmguide());
 		gaugeautoshift.setValue(player.getGaugeAutoShift());
@@ -437,6 +451,7 @@ public class PlayConfigurationView implements Initializable {
 		minemode.getSelectionModel().select(player.getMineMode());
 		scrollmode.getSelectionModel().select(player.getScrollMode());
 		longnotemode.getSelectionModel().select(player.getLongnoteMode());
+		longnoterate.setValue(player.getLongnoteRate());
 		hranthresholdbpm.getValueFactory().setValue(player.getHranThresholdBPM());
 		judgeregion.setSelected(player.isShowjudgearea());
 		markprocessednote.setSelected(player.isMarkprocessednote());
@@ -451,6 +466,7 @@ public class PlayConfigurationView implements Initializable {
 		showhiddennote.setSelected(player.isShowhiddennote());
 
 		irController.update(player);
+		streamController.update(player);
 
 		txtTwitterPIN.setDisable(true);
 		twitterPINButton.setDisable(true);
@@ -490,6 +506,8 @@ public class PlayConfigurationView implements Initializable {
 		config.setEnableIpfs(enableIpfs.isSelected());
 		config.setIpfsUrl(ipfsurl.getText());
 
+		config.setUseDiscordRPC(discord.isSelected());
+
 		commitPlayer();
 
 		Config.write(config);
@@ -518,7 +536,8 @@ public class PlayConfigurationView implements Initializable {
 		player.setWindowHold(windowhold.isSelected());
 		player.setGauge(gaugeop.getValue());
 		player.setLnmode(lntype.getValue());
-		player.setJudgetiming(getValue(judgetiming));
+		player.setJudgetiming(getValue(notesdisplaytiming));
+		player.setNotesDisplayTimingAutoAdjust(notesdisplaytimingautoadjust.isSelected());
 
 		player.setBpmguide(bpmguide.isSelected());
 		player.setGaugeAutoShift(gaugeautoshift.getValue());
@@ -533,6 +552,7 @@ public class PlayConfigurationView implements Initializable {
 		player.setMineMode(minemode.getValue());
 		player.setScrollMode(scrollmode.getValue());
 		player.setLongnoteMode(longnotemode.getValue());
+		player.setLongnoteRate(longnoterate.getValue());
 		player.setHranThresholdBPM(getValue(hranthresholdbpm));
 		player.setMarkprocessednote(markprocessednote.isSelected());
 		player.setExtranoteDepth(extranotedepth.getValue());
@@ -547,6 +567,7 @@ public class PlayConfigurationView implements Initializable {
 
 		inputController.commit();
 		irController.commit();
+		streamController.commit();
 
 		updatePlayConfig();
 		skinController.commit();
@@ -642,6 +663,7 @@ public class PlayConfigurationView implements Initializable {
 		optionTab.setDisable(true);
 		otherTab.setDisable(true);
 		irTab.setDisable(true);
+		streamTab.setDisable(true);
 		controlPanel.setDisable(true);
 
 		MainLoader.play(null, bms.player.beatoraja.BMSPlayerMode.PLAY, true, config, player, songUpdated);
@@ -699,7 +721,7 @@ public class PlayConfigurationView implements Initializable {
 					try {
 						Files.deleteIfExists(p);
 					} catch (IOException e) {
-					}					
+					}
 				}
 			});
 		} catch (IOException e) {

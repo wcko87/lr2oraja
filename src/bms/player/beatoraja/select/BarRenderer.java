@@ -2,11 +2,14 @@ package bms.player.beatoraja.select;
 
 import java.io.BufferedInputStream;
 import java.nio.file.*;
+import java.util.HashMap;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
+import bms.player.beatoraja.input.KeyBoardInputProcesseor.ControlKeys;
 import bms.player.beatoraja.ir.*;
+import bms.player.beatoraja.ir.IRCourseData.IRTrophyData;
 import bms.player.beatoraja.select.MusicSelectKeyProperty.MusicSelectKey;
 import bms.player.beatoraja.select.bar.*;
 import bms.player.beatoraja.skin.*;
@@ -58,6 +61,10 @@ public class BarRenderer {
 	private TableBar courses;
 
 	private HashBar[] favorites = new HashBar[0];
+
+	// システム側で挿入されるルートフォルダ
+	private HashMap<String, Bar> appendFolders = new HashMap<String, Bar>();
+
 	/**
 	 * 難易度表バー一覧
 	 */
@@ -122,22 +129,22 @@ public class BarRenderer {
 				sortedtables.add(td);
 			}
 		}
-		
+
 		BMSSearchAccessor bmssearcha = new BMSSearchAccessor(main.getConfig().getTablepath());
 
 		Array<TableBar> table = new Array<TableBar>();
-		TableBar bmssearch = null;
 
 		durationlow = main.getConfig().getScrollDurationLow();
 		durationhigh = main.getConfig().getScrollDurationHigh();
 		analogTicksPerScroll = main.getConfig().getAnalogTicksPerScroll();
 
 		for (TableData td : sortedtables) {
-			if(td.getName().equals("BMS Search")) {
-				bmssearch = new TableBar(select, td, bmssearcha);
+			if (td.getName().equals("BMS Search")) {
+				TableBar bmssearch = new TableBar(select, td, bmssearcha);
 				table.add(bmssearch);
 			} else {
-				table.add(new TableBar(select, td, new TableDataAccessor.DifficultyTableAccessor(main.getConfig().getTablepath(), td.getUrl())));
+				table.add(new TableBar(select, td,
+						new TableDataAccessor.DifficultyTableAccessor(main.getConfig().getTablepath(), td.getUrl())));
 			}
 		}
 
@@ -193,6 +200,16 @@ public class BarRenderer {
 						}
 						cd.setSong(songs);
 						cd.setConstraint(irtd.courses[i].constraint);
+						TrophyData[] trophyDatas = new TrophyData[irtd.courses[i].trophy.length];
+						for(int j = 0;j < irtd.courses[i].trophy.length; j++) {
+						    TrophyData trophyData = new TrophyData();
+						    IRTrophyData t = irtd.courses[i].trophy[j];
+						    trophyData.setName(t.name);
+						    trophyData.setMissrate(t.smissrate);
+						    trophyData.setScorerate(t.scorerate);
+						    trophyDatas[j] = trophyData;
+						}
+						cd.setTrophy(trophyDatas);
 						cd.setRelease(true);
 						course[i] = cd;
 					}
@@ -208,7 +225,7 @@ public class BarRenderer {
 
 		new Thread(() -> {
 			TableData td = bmssearcha.read();
-			if(td != null) {
+			if (td != null) {
 				tdaccessor.write(td);
 			}
 		}).start();
@@ -324,6 +341,10 @@ public class BarRenderer {
 		}
 	}
 
+	synchronized public void setAppendDirectoryBar(String key, Bar bar) {
+	    this.appendFolders.put(key, bar);
+	}
+
 	public Bar getSelected() {
 		return currentsongs != null ? currentsongs[selectedindex] : null;
 	}
@@ -417,6 +438,14 @@ public class BarRenderer {
 	
 	public void prepare(MusicSelectSkin skin, SkinBar baro, long time) {
 		this.time = time;		
+		final long timeMillis = System.currentTimeMillis();
+		boolean applyMovement = duration != 0 && duration > timeMillis;
+		float angleLerp = 0;
+		if (applyMovement) {
+			angleLerp = angle < 0 ? ((float) (timeMillis - duration)) / angle
+				: ((float) (duration - timeMillis)) / angle;
+		}
+
 		for (int i = 0; i < barlength; i++) {
 			// calcurate song bar position
 			final BarArea ba = bararea[i];
@@ -428,15 +457,13 @@ public class BarRenderer {
 			float dy = 0;
 			final SkinImage si1 = baro.getBarImages(on, i);
 			if (si1.draw) {
-				if (duration != 0) {
+				if (applyMovement) {
 					int nextindex = i + (angle >= 0 ? 1 : -1);
 					SkinImage si2 = nextindex >= 0 ? baro.getBarImages(nextindex == skin.getCenterBar(), nextindex)
 							: null;
 					if (si2 != null && si2.draw) {
-						final float a = angle < 0 ? ((float) (System.currentTimeMillis() - duration)) / angle
-								: ((float) (duration - System.currentTimeMillis())) / angle;
-						dx = (si2.region.x - si1.region.x) * Math.max(Math.min(a, 1), -1);
-						dy = (si2.region.y - si1.region.y) * a;
+						dx = (si2.region.x - si1.region.x) * Math.max(Math.min(angleLerp, 1), -1);
+						dy = (si2.region.y - si1.region.y) * angleLerp;
 					}
 				}
 				ba.x = (int) (si1.region.x + dx);
@@ -701,9 +728,6 @@ public class BarRenderer {
 
 	public void input() {
 		BMSPlayerInputProcessor input = select.main.getInputProcessor();
-		boolean[] keystate = input.getKeystate();
-		long[] keytime = input.getTime();
-		boolean[] cursor = input.getCursorState();
 
         final MusicSelectKeyProperty property = MusicSelectKeyProperty.values()[select.main.getPlayerResource().getPlayerConfig().getMusicselectinput()];
 
@@ -730,7 +754,7 @@ public class BarRenderer {
 		}
 
 		// song bar scroll
-		if (property.isNonAnalogPressed(input, keystate, keytime, MusicSelectKey.UP, false) || cursor[1]) {
+		if (property.isNonAnalogPressed(input, MusicSelectKey.UP, false) || input.getControlKeyState(ControlKeys.DOWN)) {
 			long l = System.currentTimeMillis();
 			if (duration == 0) {
 				keyinput = true;
@@ -743,7 +767,7 @@ public class BarRenderer {
 				mov = 1;
 				angle = durationhigh;
 			}
-		} else if (property.isNonAnalogPressed(input, keystate, keytime, MusicSelectKey.DOWN, false) || cursor[0]) {
+		} else if (property.isNonAnalogPressed(input, MusicSelectKey.DOWN, false) || input.getControlKeyState(ControlKeys.UP)) {
 			long l = System.currentTimeMillis();
 			if (duration == 0) {
 				keyinput = true;
@@ -805,6 +829,7 @@ public class BarRenderer {
 		Bar sourcebar = null;
 		Array<Bar> l = new Array<Bar>();
 		boolean showInvisibleCharts = false;
+		boolean isSortable = true;
 
 		if (MainLoader.getIllegalSongCount() > 0) {
 			l.addAll(SongBar.toSongBarArray(select.getSongDatabase().getSongDatas(MainLoader.getIllegalSongs())));
@@ -817,6 +842,9 @@ public class BarRenderer {
 			l.addAll(new FolderBar(select, null, "e2977170").getChildren());
 			l.add(courses);
 			l.addAll(favorites);
+			appendFolders.keySet().forEach((key) -> {
+			    l.add(appendFolders.get(key));
+			});
 			l.addAll(tables);
 			l.addAll(commands);
 			l.addAll(search);
@@ -830,6 +858,7 @@ public class BarRenderer {
 				dir.removeLast();
 			}
 			l.addAll(((DirectoryBar) bar).getChildren());
+			isSortable = ((DirectoryBar) bar).isSortable();
 		}
 
 		if(!select.main.getConfig().isShowNoSongExistingBar()) {
@@ -882,8 +911,11 @@ public class BarRenderer {
 					}
 				}
 			}
-			Sort.instance().sort(newcurrentsongs, BarSorter.values()[select.getSort()]);
-			
+
+			if(isSortable) {
+			    Sort.instance().sort(newcurrentsongs, BarSorter.values()[select.getSort()]);
+			}
+
 			Array<Bar> bars = new Array<Bar>();
 			if (select.main.getPlayerConfig().isRandomSelect()) {
 				SongData[] randomTargets = Stream.of(newcurrentsongs).filter(

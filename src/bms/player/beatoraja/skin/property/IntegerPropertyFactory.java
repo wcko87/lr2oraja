@@ -321,11 +321,7 @@ public class IntegerPropertyFactory {
 			return (state) -> {
 				if (state instanceof BMSPlayer) {
 					final GrooveGauge gauge = ((BMSPlayer) state).getGauge();
-					return (gauge.getType() == GrooveGauge.HARD || gauge.getType() == GrooveGauge.EXHARD
-							|| gauge.getType() == GrooveGauge.HAZARD || gauge.getType() == GrooveGauge.CLASS
-							|| gauge.getType() == GrooveGauge.EXCLASS || gauge.getType() == GrooveGauge.EXHARDCLASS)
-							&& gauge.getValue() > 0 && gauge.getValue() < 0.1 ? 1
-									: ((int) (gauge.getValue() * 10)) % 10;
+					return gauge.getValue() > 0 && gauge.getValue() < 0.1 ? 1 : ((int) (gauge.getValue() * 10)) % 10;
 				}
 				if (state instanceof AbstractResult) {
 					final int gaugeType = ((AbstractResult) state).getGaugeType();
@@ -464,7 +460,7 @@ public class IntegerPropertyFactory {
 	
 	public enum ValueType {
 		
-		judge_timing(12, (state) -> (state.main.getPlayerResource().getPlayerConfig().getJudgetiming())), 
+		notesdisplaytiming(12, (state) -> (state.main.getPlayerResource().getPlayerConfig().getJudgetiming())), 
 
 		playtime_total_hour(17, (state) -> ((int) (state.main.getPlayerResource().getPlayerData().getPlaytime() / 3600))),
 		playtime_total_minute(18, (state) -> ((int) (state.main.getPlayerResource().getPlayerData().getPlaytime() / 60) % 60)),
@@ -774,6 +770,17 @@ public class IntegerPropertyFactory {
 		ranking_exscore9(388, createRankingexscore(8)),
 		ranking_exscore10(389, createRankingexscore(9)),
 
+		ranking_index1(390, createRankingindex(0)),
+		ranking_index2(391, createRankingindex(1)),
+		ranking_index3(392, createRankingindex(2)),
+		ranking_index4(393, createRankingindex(3)),
+		ranking_index5(394, createRankingindex(4)),
+		ranking_index6(395, createRankingindex(5)),
+		ranking_index7(396, createRankingindex(6)),
+		ranking_index8(397, createRankingindex(7)),
+		ranking_index9(398, createRankingindex(8)),
+		ranking_index10(399, createRankingindex(9)),
+
 		judge_duration1(525, createJudgeduration(0)),
 		judge_duration2(526, createJudgeduration(1)),
 		judge_duration3(527, createJudgeduration(2)),
@@ -880,17 +887,33 @@ public class IntegerPropertyFactory {
 		private static IntegerProperty createRankingexscore(int index) {
 			return (state) -> {
 				RankingData irc = null;
+				int rankingOffset = 0;
 				if (state instanceof MusicSelector) {
 					irc = ((MusicSelector) state).getCurrentRankingData();
+					rankingOffset = ((MusicSelector) state).getRankingOffset();
 				}
 				if (state instanceof AbstractResult) {
 					irc = ((AbstractResult) state).getRankingData();
+					rankingOffset = ((AbstractResult) state).getRankingOffset();
 				}
-				IRScoreData[] scores = irc != null ? irc.getScores() : null;
-				if(scores != null && scores.length > index) {
-					return scores[index].getExscore();							
+				IRScoreData score = irc != null ? irc.getScore(index + rankingOffset) : null;
+				return score != null ? score.getExscore() : Integer.MIN_VALUE;
+			};
+		}
+		
+		private static IntegerProperty createRankingindex(int index) {
+			return (state) -> {
+				RankingData irc = null;
+				int rankingOffset = 0;
+				if (state instanceof MusicSelector) {
+					irc = ((MusicSelector) state).getCurrentRankingData();
+					rankingOffset = ((MusicSelector) state).getRankingOffset();
 				}
-				return Integer.MIN_VALUE;
+				if (state instanceof AbstractResult) {
+					irc = ((AbstractResult) state).getRankingData();
+					rankingOffset = ((AbstractResult) state).getRankingOffset();
+				}
+				return irc != null ? irc.getScoreRanking(index + rankingOffset) : Integer.MIN_VALUE;
 			};
 		}
 		
@@ -960,8 +983,10 @@ public class IntegerPropertyFactory {
 		
 		customjudge(BUTTON_ASSIST_EXJUDGE, (state) -> (state.main.getPlayerResource().getPlayerConfig().isCustomJudge() ? 1 : 0)),
 		lnmode(BUTTON_LNMODE, (state) -> (state.main.getPlayerResource().getPlayerConfig().getLnmode())),
+		notesdisplaytimingautoadjust(75, (state) -> (state.main.getPlayerResource().getPlayerConfig().isNotesDisplayTimingAutoAdjust() ? 1 : 0)),
 		target(BUTTON_TARGET, (state) -> (state.main.getPlayerResource().getPlayerConfig().getTarget())),
 		gaugeautoshift(78, (state) -> (state.main.getPlayerResource().getPlayerConfig().getGaugeAutoShift())),
+		bottomshiftablegauge(BUTTON_BOTTOMSIFTABLEFGAUGE, (state) -> (state.main.getPlayerResource().getPlayerConfig().getBottomShiftableGauge())),
 		bga(72, (state) -> (state.main.getPlayerResource().getConfig().getBga())),
 		
 		mode(11, (state) -> {
@@ -1011,6 +1036,18 @@ public class IntegerPropertyFactory {
 			}
 			return Integer.MIN_VALUE;
 		}),
+		hispeedautoadjust(BUTTON_HISPEEDAUTOADJUST, (state) -> {
+			PlayConfig pc = null;
+			if(state instanceof MusicSelector) {
+				pc = ((MusicSelector)state).getSelectedBarPlayConfig();
+			} else {
+				pc = state.main.getPlayerConfig().getPlayConfig(state.main.getPlayerConfig().getMode()).getPlayconfig();
+			}
+			if (pc != null) {
+				return pc.isEnableHispeedAutoAdjust() ? 1 : 0;
+			}
+			return Integer.MIN_VALUE;
+		}),
 
 		favorite_song(89, (state) -> {
 			final SongData sd = state.main.getPlayerResource().getSongdata();
@@ -1043,6 +1080,70 @@ public class IntegerPropertyFactory {
 		autosave_replay2(322, (state) -> (state.main.getPlayerConfig().getAutoSaveReplay()[1])),
 		autosave_replay3(323, (state) -> (state.main.getPlayerConfig().getAutoSaveReplay()[2])),
 		autosave_replay4(324, (state) -> (state.main.getPlayerConfig().getAutoSaveReplay()[3])),
+
+		lanecover(BUTTON_LANECOVER, (state) -> {
+			PlayConfig pc = null;
+			if(state instanceof MusicSelector) {
+				pc = ((MusicSelector)state).getSelectedBarPlayConfig();
+			} else {
+				pc = state.main.getPlayerConfig().getPlayConfig(state.main.getPlayerConfig().getMode()).getPlayconfig();
+			}
+			if (pc != null) {
+				return pc.isEnablelanecover() ? 1 : 0;
+			}
+			return Integer.MIN_VALUE;
+		}),
+		lift(BUTTON_LIFT, (state) -> {
+			PlayConfig pc = null;
+			if(state instanceof MusicSelector) {
+				pc = ((MusicSelector)state).getSelectedBarPlayConfig();
+			} else {
+				pc = state.main.getPlayerConfig().getPlayConfig(state.main.getPlayerConfig().getMode()).getPlayconfig();
+			}
+			if (pc != null) {
+				return pc.isEnablelift() ? 1 : 0;
+			}
+			return Integer.MIN_VALUE;
+		}),
+		hidden(BUTTON_HIDDEN, (state) -> {
+			PlayConfig pc = null;
+			if(state instanceof MusicSelector) {
+				pc = ((MusicSelector)state).getSelectedBarPlayConfig();
+			} else {
+				pc = state.main.getPlayerConfig().getPlayConfig(state.main.getPlayerConfig().getMode()).getPlayconfig();
+			}
+			if (pc != null) {
+				return pc.isEnablehidden() ? 1 : 0;
+			}
+			return Integer.MIN_VALUE;
+		}),
+
+		judgealgorithm(BUTTON_JUDGEALGORITHM, (state) -> {
+			PlayConfig pc = null;
+			if(state instanceof MusicSelector) {
+				pc = ((MusicSelector)state).getSelectedBarPlayConfig();
+			} else {
+				pc = state.main.getPlayerConfig().getPlayConfig(state.main.getPlayerConfig().getMode()).getPlayconfig();
+			}
+			if (pc != null) {
+				final String[] algorithms = {JudgeAlgorithm.Combo.name(), JudgeAlgorithm.Duration.name(), JudgeAlgorithm.Lowest.name()};
+				final String jt = pc.getJudgetype();
+				for (int i = 0; i < algorithms.length; i++) {
+					if (jt.equals(algorithms[i])) {
+						return i;
+					}
+				}
+			}
+			return Integer.MIN_VALUE;
+		}),
+
+		extranotedepth(BUTTON_EXTRANOTE, (state) -> (state.main.getPlayerConfig().getExtranoteDepth())),
+		minemode(BUTTON_MINEMODE, (state) -> (state.main.getPlayerConfig().getMineMode())),
+		scrollmode(BUTTON_SCROLLMODE, (state) -> (state.main.getPlayerConfig().getScrollMode())),
+		longnotemode(BUTTON_LONGNOTEMODE, (state) -> (state.main.getPlayerConfig().getLongnoteMode())),
+
+		seventonine_pattern(BUTTON_SEVENTONINE_PATTERN, (state) -> (state.main.getPlayerConfig().getSevenToNinePattern())),
+		seventonine_type(BUTTON_SEVENTONINE_TYPE, (state) -> (state.main.getPlayerConfig().getSevenToNineType())),
 
 		cleartype(370, (state) -> {
 			if (state instanceof MusicSelector) {
@@ -1095,17 +1196,17 @@ public class IntegerPropertyFactory {
 		private static IntegerProperty createRankinCleartypeProperty(int index) {
 			return (state) -> {
 				RankingData irc = null;
+				int rankingOffset = 0;
 				if (state instanceof MusicSelector) {
 					irc = ((MusicSelector) state).getCurrentRankingData();
+					rankingOffset = ((MusicSelector) state).getRankingOffset();
 				}
 				if (state instanceof AbstractResult) {
 					irc = ((AbstractResult) state).getRankingData();
+					rankingOffset = ((AbstractResult) state).getRankingOffset();
 				}
-				IRScoreData[] scores = irc != null ? irc.getScores() : null;
-				if(scores != null && scores.length > index) {
-					return scores[index].clear.id;
-				}
-				return Integer.MIN_VALUE;
+				IRScoreData score = irc != null ? irc.getScore(index + rankingOffset) : null;
+				return score != null ? score.clear.id : Integer.MIN_VALUE;
 			};
 		}
 	}
