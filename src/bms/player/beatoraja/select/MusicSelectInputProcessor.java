@@ -198,14 +198,14 @@ public class MusicSelectInputProcessor {
                 }
             }
 
-            TargetProperty[] targets = TargetProperty.getAllTargetProperties();
+            String[] targets = TargetProperty.getTargets();
             while(mov > 0) {
-                config.setTarget((config.getTarget() + targets.length - 1) % targets.length);
+            	select.executeEvent(EventType.target, -1);
                 select.play(SOUND_SCRATCH);
                 mov--;
             }
             while(mov < 0) {
-                config.setTarget((config.getTarget() + 1) % targets.length);
+            	select.executeEvent(EventType.target, 1);
                 select.play(SOUND_SCRATCH);
                 mov++;
             }
@@ -365,6 +365,14 @@ public class MusicSelectInputProcessor {
         // open explorer with selected song
 		if(input.isActivated(KeyCommand.OPEN_EXPLORER)) {
             select.execute(MusicSelectCommand.OPEN_WITH_EXPLORER);
+        }
+        // copy song MD5 hash
+        if(input.isActivated(KeyCommand.COPY_SONG_MD5_HASH)) {
+            select.execute(MusicSelectCommand.COPY_MD5_HASH);
+        }
+        // copy song SHA256 hash
+        if(input.isActivated(KeyCommand.COPY_SONG_SHA256_HASH)) {
+            select.execute(MusicSelectCommand.COPY_SHA256_HASH);
         }
 
         if (input.isControlKeyPressed(ControlKeys.ESCAPE)) {

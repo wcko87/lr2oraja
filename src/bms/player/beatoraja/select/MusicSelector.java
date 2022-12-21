@@ -11,6 +11,7 @@ import java.nio.file.*;
 import java.util.logging.Logger;
 
 import bms.player.beatoraja.ir.IRPlayerData;
+import bms.player.beatoraja.play.TargetProperty;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.Rectangle;
@@ -98,9 +99,7 @@ public class MusicSelector extends MainState {
 	protected int rankingOffset = 0;
 
 	private PlayerInformation rival;
-	private PlayerInformation[] rivals = new PlayerInformation[0];
-	private ScoreDataCache[] rivalcaches = new ScoreDataCache[0];
-
+	
 	private int panelstate;
 
 	public static final int SOUND_BGM = 0;
@@ -139,125 +138,7 @@ public class MusicSelector extends MainState {
 				pda.readScoreDatas(collector, songs, lnmode);
 			}
 		};
-
-		if(main.getIRStatus().length > 0) {
-			if(main.getIRStatus()[0].config.isImportscore()) {
-				main.getIRStatus()[0].config.setImportscore(false);
-				try {
-					IRResponse<IRScoreData[]> scores = main.getIRStatus()[0].connection.getPlayData(main.getIRStatus()[0].player, null);
-					if(scores.isSucceeded()) {
-						ScoreDataImporter scoreimport = new ScoreDataImporter(new ScoreDatabaseAccessor(main.getConfig().getPlayerpath() + File.separatorChar + main.getConfig().getPlayername() + File.separatorChar + "score.db"));
-						scoreimport.importScores(convert(scores.getData()), main.getIRStatus()[0].config.getIrname());
-
-						Logger.getGlobal().info("IRからのスコアインポート完了");
-					} else {
-						Logger.getGlobal().warning("IRからのスコアインポート失敗 : " + scores.getMessage());
-					}					
-				} catch (Throwable e) {
-					e.printStackTrace();
-				}
-			}
-			
-			IRResponse<IRPlayerData[]> response = main.getIRStatus()[0].connection.getRivals();
-			if(response.isSucceeded()) {
-				try {
-					
-					// ライバルスコアデータベース作成
-					// TODO 別のクラスに移動
-					if(!Files.exists(Paths.get("rival"))) {
-						Files.createDirectory(Paths.get("rival"));
-					}
-
-					// ライバルキャッシュ作成
-					Array<PlayerInformation> rivals = new Array();
-					Array<ScoreDataCache> rivalcaches = new Array();
-					
-					if(main.getIRStatus()[0].config.isImportrival()) {
-						for(IRPlayerData irplayer : response.getData()) {
-							final PlayerInformation rival = new PlayerInformation();
-							rival.setId(irplayer.id);
-							rival.setName(irplayer.name);
-							rival.setRank(irplayer.rank);
-							final ScoreDatabaseAccessor scoredb = new ScoreDatabaseAccessor("rival/" + main.getIRStatus()[0].config.getIrname() + rival.getId() + ".db");
-							
-							rivals.add(rival);
-							rivalcaches.add(new ScoreDataCache() {
-
-								@Override
-								protected ScoreData readScoreDatasFromSource(SongData song, int lnmode) {
-									return scoredb.getScoreData(song.getSha256(), song.hasUndefinedLongNote() ? lnmode : 0);
-								}
-
-								protected void readScoreDatasFromSource(ScoreDataCollector collector, SongData[] songs, int lnmode) {
-									scoredb.getScoreDatas(collector,songs, lnmode);
-								}
-							});
-							new Thread(() -> {
-								scoredb.createTable();
-								scoredb.setInformation(rival);
-								IRResponse<IRScoreData[]> scores = main.getIRStatus()[0].connection.getPlayData(irplayer, null);
-								if(scores.isSucceeded()) {
-									scoredb.setScoreData(convert(scores.getData()));
-									Logger.getGlobal().info("IRからのライバルスコア取得完了 : " + rival.getName());
-								} else {
-									Logger.getGlobal().warning("IRからのライバルスコア取得失敗 : " + scores.getMessage());
-								}
-							}).start();
-						}
-					}
-					
-					try (DirectoryStream<Path> paths = Files.newDirectoryStream(Paths.get("rival"))) {
-						for (Path p : paths) {
-							boolean exists = false;
-							for(PlayerInformation info : rivals) {
-								if(p.getFileName().toString().equals(main.getIRStatus()[0].config.getIrname() + info.getId() + ".db")) {
-									exists = true;
-									break;
-								}
-							}
-							if(exists) {
-								continue;
-							}
-							
-							if(p.toString().endsWith(".db")) {
-								final ScoreDatabaseAccessor scoredb = new ScoreDatabaseAccessor(p.toString());
-								PlayerInformation info = scoredb.getInformation();
-								if(info != null) {
-									rivals.add(info);
-									rivalcaches.add(new ScoreDataCache() {
-
-										@Override
-										protected ScoreData readScoreDatasFromSource(SongData song, int lnmode) {
-											return scoredb.getScoreData(song.getSha256(), song.hasUndefinedLongNote() ? lnmode : 0);
-										}
-
-										protected void readScoreDatasFromSource(ScoreDataCollector collector, SongData[] songs, int lnmode) {
-											scoredb.getScoreDatas((song, score) -> {
-												if(score != null) {
-													score.setPlayer(info.getName());
-												}
-												collector.collect(song, score);
-											},songs, lnmode);
-										}
-									});
-									Logger.getGlobal().info("ローカルに保存されているライバルスコア取得完了 : " + info.getName());
-								}
-							}
-						}
-					} catch (Throwable e) {
-						e.printStackTrace();
-					}
-					this.rivals = rivals.toArray(PlayerInformation.class);
-					this.rivalcaches = rivalcaches.toArray(ScoreDataCache.class);
-
-				} catch (Throwable e) {
-					e.printStackTrace();
-				}
-			} else {
-				Logger.getGlobal().warning("IRからのライバル取得失敗 : " + response.getMessage());
-			}
-		}
-
+		
 		bar = new BarRenderer(this);
 		banners = new PixmapResourcePool(main.getConfig().getBannerPixmapGen());
 		stagefiles = new PixmapResourcePool(main.getConfig().getStagefilePixmapGen());
@@ -268,63 +149,23 @@ public class MusicSelector extends MainState {
 		}
 	}
 	
-	private ScoreData[] convert(IRScoreData[] irscores) {
-		ScoreData[] scores = new ScoreData[irscores.length];
-		for(int i = 0;i < scores.length;i++) {
-			final ScoreData score = new ScoreData();
-			final bms.player.beatoraja.ir.IRScoreData irscore = irscores[i];
-			score.setSha256(irscore.sha256);
-			score.setMode(irscore.lntype);
-			score.setPlayer(irscore.player);
-			score.setClear(irscore.clear.id); 
-			score.setDate(irscore.date);
-			score.setEpg(irscore.epg);
-			score.setLpg(irscore.lpg);
-			score.setEgr(irscore.egr);
-			score.setLgr(irscore.lgr);
-			score.setEgd(irscore.egd);
-			score.setLgd(irscore.lgd);
-			score.setEbd(irscore.ebd);
-			score.setLbd(irscore.lbd);
-			score.setEpr(irscore.epr);
-			score.setLpr(irscore.lpr);
-			score.setEms(irscore.ems);
-			score.setLms(irscore.lms);
-			score.setCombo(irscore.maxcombo);
-			score.setNotes(irscore.notes);
-			score.setPassnotes(irscore.passnotes != 0 ? irscore.notes : irscore.passnotes);
-			score.setMinbp(irscore.minbp);
-			score.setOption(irscore.option);
-			score.setSeed(irscore.seed);
-			score.setAssist(irscore.assist);
-			score.setGauge(irscore.gauge);
-			score.setDeviceType(irscore.deviceType);
-			
-			scores[i] = score;
-		}
-		return scores;
-	}
-
 	public void setRival(PlayerInformation rival) {
+		final RivalDataAccessor rivals = main.getRivalDataAccessor();
 		int index = -1;
-		for(int i = 0;i < rivals.length;i++) {
-			if(rival == rivals[i]) {
+		for(int i = 0;i < rivals.getRivals().length;i++) {
+			if(rival == rivals.getRivals()[i]) {
 				index = i;
 				break;
 			}
 		}
-		this.rival = index != -1 ? rivals[index] : null;
-		rivalcache = index != -1 ? rivalcaches[index] : null;
+		this.rival = index != -1 ? rivals.getRivals()[index] : null;
+		rivalcache = index != -1 ? rivals.getRivalScoreDataCaches()[index] : null;
 		bar.updateBar();
 		Logger.getGlobal().info("Rival変更:" + (rival != null ? rival.getName() : "なし"));
 	}
 
 	public PlayerInformation getRival() {
 		return rival;
-	}
-
-	public PlayerInformation[] getRivals() {
-		return rivals;
 	}
 
 	public ScoreDataCache getScoreDataCache() {
@@ -361,7 +202,6 @@ public class MusicSelector extends MainState {
 
 		preview = new PreviewMusicProcessor(main.getAudioProcessor(), main.getPlayerResource().getConfig());
 		preview.setDefault(getSound(SOUND_BGM));
-		preview.start(null);
 
 		final BMSPlayerInputProcessor input = main.getInputProcessor();
 		PlayModeConfig pc = (config.getMusicselectinput() == 0 ? config.getMode7()
@@ -383,6 +223,10 @@ public class MusicSelector extends MainState {
 			search = new SearchTextField(this, main.getPlayerResource().getConfig().getResolution());
 			setStage(search);
 		}
+	}
+
+	public void prepare() {
+		preview.start(null);
 	}
 
 	public void render() {
@@ -523,6 +367,11 @@ public class MusicSelector extends MainState {
 					play = BMSPlayerMode.PLAY;
 				}
 				readCourse(play);
+			} else if (current instanceof RandomCourseBar) {
+				if (play.mode == BMSPlayerMode.Mode.PRACTICE) {
+					play = BMSPlayerMode.PLAY;
+				}
+				readRandomCourse(play);
 			} else if (current instanceof DirectoryBar) {
 				if(play.mode == BMSPlayerMode.Mode.AUTOPLAY) {
 					Array<Path> paths = new Array<Path>();
@@ -555,9 +404,12 @@ public class MusicSelector extends MainState {
 
 		musicinput.input();
 	}
+
+	public void shutdown() {
+		preview.stop();
+	}
 	
 	public void changeState(MainStateType type) {
-		preview.stop();
 		main.changeState(type);
 		if (search != null) {
 			search.unfocus(this);
@@ -590,15 +442,48 @@ public class MusicSelector extends MainState {
 	}
 
 	private void readCourse(BMSPlayerMode mode) {
-		final PlayerResource resource = main.getPlayerResource();
-		final GradeBar course = (GradeBar) bar.getSelected();
-		if (!course.existsAllSongs()) {
+		final GradeBar gradeBar = (GradeBar) bar.getSelected();
+		if (!gradeBar.existsAllSongs()) {
 			Logger.getGlobal().info("段位の楽曲が揃っていません");
 			return;
 		}
 
+		if (!_readCourse(mode, gradeBar)) {
+			main.getMessageRenderer().addMessage("Failed to loading Course : Some of songs not found", 1200, Color.RED, 1);
+			Logger.getGlobal().info("段位の楽曲が揃っていません");
+		}
+	}
+
+	private void readRandomCourse(BMSPlayerMode mode) {
+		final RandomCourseBar randomCourseBar = (RandomCourseBar) bar.getSelected();
+		if (!randomCourseBar.existsAllSongs()) {
+			Logger.getGlobal().info("ランダムコースの楽曲が揃っていません");
+			return;
+		}
+
+		randomCourseBar.getCourseData().lotterySongDatas(main);
+		final GradeBar gradeBar = new GradeBar(randomCourseBar.getCourseData().createCourseData());
+		if (!gradeBar.existsAllSongs()) {
+			main.getMessageRenderer().addMessage("Failed to loading Random Course : Some of songs not found", 1200, Color.RED, 1);
+			Logger.getGlobal().info("ランダムコースの楽曲が揃っていません");
+			return;
+		}
+
+		if (_readCourse(mode, gradeBar)) {
+			bar.addRandomCourse(gradeBar, bar.getDirectoryString());
+			bar.updateBar();
+			bar.setSelected(gradeBar);
+		} else {
+			main.getMessageRenderer().addMessage("Failed to loading Random Course : Some of songs not found", 1200, Color.RED, 1);
+			Logger.getGlobal().info("ランダムコースの楽曲が揃っていません");
+		}
+	}
+
+	private boolean _readCourse(BMSPlayerMode mode, GradeBar gradeBar) {
+		final PlayerResource resource = main.getPlayerResource();
+
 		resource.clear();
-		final SongData[] songs = course.getSongDatas();
+		final SongData[] songs = gradeBar.getSongDatas();
 		Path[] files = new Path[songs.length];
 		int i = 0;
 		for (SongData song : songs) {
@@ -606,61 +491,60 @@ public class MusicSelector extends MainState {
 		}
 		if (resource.setCourseBMSFiles(files)) {
 			if (mode.mode == BMSPlayerMode.Mode.PLAY || mode.mode == BMSPlayerMode.Mode.AUTOPLAY) {
-				for (CourseData.CourseDataConstraint constraint : course.getCourseData().getConstraint()) {
+				for (CourseData.CourseDataConstraint constraint : gradeBar.getCourseData().getConstraint()) {
 					switch (constraint) {
-					case CLASS:
-						config.setRandom(0);
-						config.setRandom2(0);
-						config.setDoubleoption(0);
-						break;
-					case MIRROR:
-						if (config.getRandom() == 1) {
-							config.setRandom2(1);
-							config.setDoubleoption(1);
-						} else {
+						case CLASS:
 							config.setRandom(0);
 							config.setRandom2(0);
 							config.setDoubleoption(0);
-						}
-						break;
-					case RANDOM:
-						if (config.getRandom() > 5) {
-							config.setRandom(0);
-						}
-						if (config.getRandom2() > 5) {
-							config.setRandom2(0);
-						}
-						break;
-					case LN:
-						config.setLnmode(0);
-						break;
-					case CN:
-						config.setLnmode(1);
-						break;
-					case HCN:
-						config.setLnmode(2);
-						break;
-					default:
-						break;
+							break;
+						case MIRROR:
+							if (config.getRandom() == 1) {
+								config.setRandom2(1);
+								config.setDoubleoption(1);
+							} else {
+								config.setRandom(0);
+								config.setRandom2(0);
+								config.setDoubleoption(0);
+							}
+							break;
+						case RANDOM:
+							if (config.getRandom() > 5) {
+								config.setRandom(0);
+							}
+							if (config.getRandom2() > 5) {
+								config.setRandom2(0);
+							}
+							break;
+						case LN:
+							config.setLnmode(0);
+							break;
+						case CN:
+							config.setLnmode(1);
+							break;
+						case HCN:
+							config.setLnmode(2);
+							break;
+						default:
+							break;
 					}
 				}
 			}
-			course.getCourseData().setSong(resource.getCourseBMSModels());
-			resource.setCourseData(course.getCourseData());
+			gradeBar.getCourseData().setSong(resource.getCourseBMSModels());
+			resource.setCourseData(gradeBar.getCourseData());
 			resource.setBMSFile(files[0], mode);
-			playedcourse = course.getCourseData();
-			
+			playedcourse = gradeBar.getCourseData();
+
 			if(main.getIRStatus().length > 0 && currentir == null) {
 				currentir = new RankingData();
-	            ircache.put(course.getCourseData(), config.getLnmode(), currentir);
+				ircache.put(gradeBar.getCourseData(), config.getLnmode(), currentir);
 			}
 			resource.setRankingData(currentir);
 
 			changeState(MainStateType.DECIDE);
-		} else {
-			main.getMessageRenderer().addMessage("Failed to loading Course : Some of songs not found", 1200, Color.RED, 1);
-			Logger.getGlobal().info("段位の楽曲が揃っていません");
+			return true;
 		}
+		return false;
 	}
 
 	public int getSort() {
@@ -705,12 +589,16 @@ public class MusicSelector extends MainState {
 	}
 
 	public boolean existsConstraint(CourseData.CourseDataConstraint constraint) {
-		if (!(bar.getSelected() instanceof GradeBar)) {
+		CourseData.CourseDataConstraint[] cons;
+		if ((bar.getSelected() instanceof GradeBar)) {
+			cons = ((GradeBar) bar.getSelected()).getCourseData().getConstraint();
+		} else if (bar.getSelected() instanceof RandomCourseBar) {
+			cons = ((RandomCourseBar) bar.getSelected()).getCourseData().getConstraint();
+		} else {
 			return false;
 		}
 
-		GradeBar gb = (GradeBar) bar.getSelected();
-		for (CourseData.CourseDataConstraint con : gb.getCourseData().getConstraint()) {
+		for (CourseData.CourseDataConstraint con : cons) {
 			if(con == constraint) {
 				return true;
 			}

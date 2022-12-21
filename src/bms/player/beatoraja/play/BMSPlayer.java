@@ -8,7 +8,6 @@ import java.util.*;
 import java.util.logging.Logger;
 
 import bms.player.beatoraja.config.Discord;
-import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.FloatArray;
 
@@ -113,13 +112,6 @@ public class BMSPlayer extends MainState {
 
 		// TODO ターゲットスコアはPlayerResourceで受け渡す
 		if(resource.getRivalScoreData() == null) {
-			int rivalscore = TargetProperty.getAllTargetProperties()[config.getTarget()]
-					.getTarget(main);
-			ScoreData rivalScore = new ScoreData();
-			rivalScore.setPlayer(TargetProperty.getAllTargetProperties()[config.getTarget()].getName());
-			rivalScore.setEpg(rivalscore / 2);
-			rivalScore.setEgr(rivalscore % 2);
-			resource.setRivalScoreData(rivalScore);
 		} else {
 			ScoreData rival = resource.getRivalScoreData();
 			if(rival.getSeed() != -1) {
@@ -483,6 +475,11 @@ public class BMSPlayer extends MainState {
 			practice.create(model);
 			state = STATE_PRACTICE;
 		} else {
+			
+			if(resource.getRivalScoreData() == null) {
+				ScoreData rivalScore = TargetProperty.getTargetProperty(config.getTargetid()).getTarget(main);
+				resource.setRivalScoreData(rivalScore);
+			}
 			getScoreDataProperty().setTargetScore(score.getExscore(), score.decodeGhost(), resource.getRivalScoreData() != null ? resource.getRivalScoreData().getExscore() : 0 , null, model.getTotalNotes());
 		}
 	}
@@ -499,20 +496,19 @@ public class BMSPlayer extends MainState {
 		final BMSPlayerInputProcessor input = main.getInputProcessor();
 		final PlayerConfig config = resource.getPlayerConfig();
 
-		final long now = main.getNowTime();
 		final long micronow = main.getNowMicroTime();
 
-		if(now > skin.getInput()){
+		if(micronow > skin.getInput() * 1000){
 			main.switchTimer(TIMER_STARTINPUT, true);
 		}
 		if(input.startPressed() || input.isSelectPressed()){
-			startpressedtime = now;
+			startpressedtime = micronow;
 		}
 		switch (state) {
 		// 楽曲ロード
 		case STATE_PRELOAD:
-			if (resource.mediaLoadFinished() && now > skin.getLoadstart() + skin.getLoadend()
-					&& now - startpressedtime > 1000) {
+			if (resource.mediaLoadFinished() && micronow > (skin.getLoadstart() + skin.getLoadend()) * 1000
+					&& micronow - startpressedtime > 1000000) {
 				bga.prepare(this);
 				final long mem = Runtime.getRuntime().freeMemory();
 				System.gc();
@@ -553,8 +549,8 @@ public class BMSPlayer extends MainState {
 			control.setEnableCursor(false);
 			practice.processInput(input);
 
-			if (input.getKeyState(0) && resource.mediaLoadFinished() && now > skin.getLoadstart() + skin.getLoadend()
-					&& now - startpressedtime > 1000) {
+			if (input.getKeyState(0) && resource.mediaLoadFinished() &&  micronow > (skin.getLoadstart() + skin.getLoadend()) * 1000
+					&& micronow - startpressedtime > 1000000) {
 				PracticeProperty property = practice.getPracticeProperty();
 				control.setEnableControl(true);
 				control.setEnableCursor(true);
@@ -608,13 +604,9 @@ public class BMSPlayer extends MainState {
 				main.setMicroTimer(TIMER_PLAY, micronow - starttimeoffset * 1000);
 				main.setMicroTimer(TIMER_RHYTHM, micronow - starttimeoffset * 1000);
 
-				input.setStartTime(now + main.getStartTime() - starttimeoffset);
-				if (autoplay.mode == BMSPlayerMode.Mode.REPLAY) {
-					for(KeyInputLog keyinput : replay.keylog) {
-						keyinput.time += resource.getMarginTime();
-					}
-				}
-				keyinput.startJudge(model, replay != null ? replay.keylog : null);
+				input.setStartTime(micronow + main.getStartMicroTime() - starttimeoffset * 1000);
+				input.setKeyLogMarginTime(resource.getMarginTime());
+				keyinput.startJudge(model, replay != null ? replay.keylog : null, resource.getMarginTime());
 				keysound.startBGPlay(model, starttimeoffset * 1000);
 				Logger.getGlobal().info("STATE_PLAYに移行");
 			}
@@ -905,9 +897,6 @@ public class BMSPlayer extends MainState {
 		replay.mode = config.getLnmode();
 		replay.date = Calendar.getInstance().getTimeInMillis() / 1000;
 		replay.keylog = main.getInputProcessor().getKeyInputLog();
-		for(KeyInputLog keyinput : replay.keylog) {
-			keyinput.time -= resource.getMarginTime();
-		}
 //		replay.pattern = playinfo.pattern;
 		replay.rand = playinfo.rand;
 		replay.gauge = config.getGauge();
@@ -921,6 +910,27 @@ public class BMSPlayer extends MainState {
 
 		score.setPassnotes(notes);
 		score.setMinbp(score.getEbd() + score.getLbd() + score.getEpr() + score.getLpr() + score.getEms() + score.getLms() + resource.getSongdata().getNotes() - notes);
+		
+		long count = 0;
+		long avgduration = 0;
+		final int lanes = model.getMode().key;
+		for (TimeLine tl : model.getAllTimeLines()) {
+			for (int i = 0; i < lanes; i++) {
+				Note n = tl.getNote(i);
+				if (n != null && !(model.getLntype() == BMSModel.LNTYPE_LONGNOTE
+						&& n instanceof LongNote && ((LongNote) n).isEnd())) {
+					int state = n.getState();
+					long time = n.getMicroPlayTime();
+					avgduration += state >= 1 && state <= 4 ? Math.abs(time) : 1000000;
+					count++;
+//					System.out.println(time);
+				}
+			}
+		}
+		score.setTotalDuration(avgduration);
+		score.setAvgjudge(avgduration / count);
+//		System.out.println(avgduration + " / " + count + " = " + score.getAvgjudge());
+
 		score.setDeviceType(main.getInputProcessor().getDeviceType());
 		return score;
 	}

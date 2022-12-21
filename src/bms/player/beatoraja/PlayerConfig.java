@@ -17,6 +17,7 @@ import bms.model.Mode;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonWriter;
+import com.badlogic.gdx.utils.SerializationException;
 
 /**
  * プレイヤー毎の設定項目
@@ -48,7 +49,19 @@ public class PlayerConfig {
 	 */
 	private int doubleoption;
 
+	/**
+	 * スコアターゲット(旧仕様)
+	 */
 	private int target;
+	/**
+	 * スコアターゲット
+	 */
+	private String targetid = "MAX";
+	
+	private String[] targetlist = new String[] {"RATE_A-","RATE_A", "RATE_A+","RATE_AA-","RATE_AA", "RATE_AA+", "RATE_AAA-", "RATE_AAA", "RATE_AAA+", "MAX"
+			,"RANK_NEXT", "IR_NEXT_1", "IR_NEXT_2", "IR_NEXT_3", "IR_NEXT_4", "IR_NEXT_5", "IR_NEXT_10"
+			, "IR_RANK_1", "IR_RANK_5", "IR_RANK_10", "IR_RANK_20", "IR_RANK_30", "IR_RANK_40", "IR_RANK_50"
+			, "IR_RANKRATE_5", "IR_RANKRATE_10", "IR_RANKRATE_15", "IR_RANKRATE_20", "IR_RANKRATE_25", "IR_RANKRATE_30", "IR_RANKRATE_35", "IR_RANKRATE_40", "IR_RANKRATE_45","IR_RANKRATE_50"};
 	/**
 	 * 判定タイミング
 	 */
@@ -212,6 +225,7 @@ public class PlayerConfig {
 
 	// -- Stream
 	private boolean enableRequest = false;
+	private boolean notifyRequest = false;
 	private int maxRequestCount = 30;
 
 	public PlayerConfig() {
@@ -516,6 +530,22 @@ public class PlayerConfig {
 		this.target = target;
 	}
 
+	public String getTargetid() {
+		return targetid;
+	}
+
+	public void setTargetid(String targetid) {
+		this.targetid = targetid;
+	}
+
+	public String[] getTargetlist() {
+		return targetlist;
+	}
+
+	public void setTargetlist(String[] targetlist) {
+		this.targetlist = targetlist;
+	}
+
 	public int getMisslayerDuration() {
 		if(misslayerDuration < 0) {
 			misslayerDuration = 0;
@@ -708,10 +738,18 @@ public class PlayerConfig {
         return enableRequest;
     }
 
+	public boolean getRequestNotify() {
+        return notifyRequest;
+    }
+
     public void setRequestEnable(boolean requestEnable) {
         this.enableRequest = requestEnable;
     }
-    
+
+    public void setRequestNotify(boolean notifyEnable) {
+        this.notifyRequest = notifyEnable;
+    }
+
     public int getMaxRequestCount() {
         return maxRequestCount;
     }
@@ -774,6 +812,8 @@ public class PlayerConfig {
 		random2 = MathUtils.clamp(random2, 0, 9);
 		doubleoption = MathUtils.clamp(doubleoption, 0, 3);
 		target = MathUtils.clamp(target, 0, TargetProperty.getAllTargetProperties().length);
+		targetid = targetid!= null ? targetid : "MAX";
+		targetlist = targetlist != null ? targetlist : new String[0];
 		judgetiming = MathUtils.clamp(judgetiming, JUDGETIMING_MIN, JUDGETIMING_MAX);
 		misslayerDuration = MathUtils.clamp(misslayerDuration, 0, 5000);
 		lnmode = MathUtils.clamp(lnmode, 0, 2);
@@ -893,15 +933,23 @@ public class PlayerConfig {
 
 	public static PlayerConfig readPlayerConfig(String playerpath, String playerid) {
 		PlayerConfig player = new PlayerConfig();
-		try (FileReader reader = new FileReader(Paths.get(playerpath + "/" + playerid + "/config.json").toFile())) {
+		final Path path = Paths.get(playerpath + "/" + playerid + "/config.json");
+		try (FileReader reader = new FileReader(path.toFile())) {
 			Json json = new Json();
 			json.setIgnoreUnknownFields(true);
 			player = json.fromJson(PlayerConfig.class, reader);
-			player.setId(playerid);
-			player.validate();
+		} catch (SerializationException e) {
+			Logger.getGlobal().warning("PlayerConfigの読み込み失敗 - Path : " + path.toString() + " , Log : " + e.getMessage());
+			try {
+				Files.copy(path, Paths.get(playerpath + "/" + playerid + "/config_backup.json"));
+			} catch (IOException e1) {
+//				e1.printStackTrace();
+			}
 		} catch(Throwable e) {
 			e.printStackTrace();
 		}
+		player.setId(playerid);
+		player.validate();
 		return player;
 	}
 

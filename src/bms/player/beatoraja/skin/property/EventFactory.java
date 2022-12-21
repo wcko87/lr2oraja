@@ -4,6 +4,7 @@ import bms.player.beatoraja.MainState;
 import bms.player.beatoraja.PlayConfig;
 import bms.player.beatoraja.BMSPlayerMode;
 import bms.player.beatoraja.PlayerConfig;
+import bms.player.beatoraja.PlayerInformation;
 import bms.player.beatoraja.MainState.MainStateType;
 import bms.player.beatoraja.ir.IRChartData;
 import bms.player.beatoraja.ir.IRConnection;
@@ -289,6 +290,12 @@ public class EventFactory {
 				state.play(SOUND_OPTIONCHANGE);				
 			}
 		}),
+		bgaexpand(73, (state, arg1) -> {
+			if(state instanceof MusicSelector) {
+				state.main.getConfig().setBgaExpand((state.main.getConfig().getBgaExpand() + (arg1 >= 0 ? 1 : 2)) % 3);
+				state.play(SOUND_OPTIONCHANGE);				
+			}
+		}),
 		notesdisplaytiming(74, (state, arg1) -> {
 	        final PlayerConfig config = state.main.getPlayerConfig();
 
@@ -312,8 +319,14 @@ public class EventFactory {
 		target(77, (state, arg1) -> {
 			if(state instanceof MusicSelector) {
 		        final PlayerConfig config = state.main.getPlayerResource().getPlayerConfig();
-	            final TargetProperty[] targets = TargetProperty.getAllTargetProperties();
-	            config.setTarget((config.getTarget() + (arg1 >= 0 ? 1 : targets.length - 1)) % targets.length);
+	            final String[] targets = TargetProperty.getTargets();
+	            int index = 0;
+	            for(;index < targets.length;index++) {
+	            	if(targets[index].equals(config.getTargetid())) {
+	            		break;
+	            	}
+	            }
+	            config.setTargetid(targets[(index + (arg1 >= 0 ? 1 : targets.length - 1)) % targets.length]);
 			}
 		}),
 		gaugeautoshift(78, (state, arg1) -> {
@@ -332,18 +345,22 @@ public class EventFactory {
 				selector.play(SOUND_OPTIONCHANGE);
 			}
 		}),
+		/**
+		 * 選択ライバル変更
+		 */
 		rival(79, (state, arg1) -> {
 			if(state instanceof MusicSelector) {
 				final MusicSelector selector = (MusicSelector) state;
+				PlayerInformation[] rivals = state.main.getRivalDataAccessor().getRivals();
 	            int index = -1;
-	            for(int i = 0;i < selector.getRivals().length;i++) {
-	            	if(selector.getRival() == selector.getRivals()[i]) {
+	            for(int i = 0;i < rivals.length;i++) {
+	            	if(selector.getRival() == rivals[i]) {
 	            		index = i;
 	            		break;
 	            	}
-	            }	            
-	            index = (index + (arg1 >= 0 ? 2 : 0)) % (selector.getRivals().length + 1) - 1;
-	            selector.setRival(index != -1 ? selector.getRivals()[index] : null);
+	            }
+	            index = (index + (arg1 >= 0 ? 2 : rivals.length + 1)) % (rivals.length + 1) - 1;
+	            selector.setRival(index != -1 ? rivals[index] : null);
 	            selector.play(SOUND_OPTIONCHANGE);
 			}
 		}),

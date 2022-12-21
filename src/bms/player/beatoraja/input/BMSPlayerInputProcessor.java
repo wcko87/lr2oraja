@@ -105,7 +105,8 @@ public class BMSPlayerInputProcessor {
 	private BMSPlayerInputDevice lastKeyDevice;
 	private Array<BMSPlayerInputDevice> devices;
 
-	long starttime;
+	private long starttime;
+	private long microMarginTime;
 
 	int mousex;
 	int mousey;
@@ -162,6 +163,10 @@ public class BMSPlayerInputProcessor {
 			}
 		}
 		midiinput.setStartTime(starttime);
+	}
+	
+	public void setKeyLogMarginTime(long milliMarginTime) {
+		microMarginTime = milliMarginTime * 1000;
 	}
 
 	public long getStartTime() {
@@ -320,6 +325,10 @@ public class BMSPlayerInputProcessor {
 	public boolean isControlKeyPressed(ControlKeys key) {
 		return kbinput.isKeyPressed(key.keycode);
 	}
+
+	public boolean isControlKeyPressed(ControlKeys key, int heldModifiers, int... notHeldModifiers) {
+		return kbinput.isKeyPressed(key.keycode, heldModifiers, notHeldModifiers);
+	}
 	
 	protected void keyChanged(BMSPlayerInputDevice device, long presstime, int i, boolean pressed) {
 		if (!enable) {
@@ -329,8 +338,8 @@ public class BMSPlayerInputProcessor {
 			keystate[i] = pressed;
 			time[i] = presstime;
 			lastKeyDevice = device;
-			if (this.getStartTime() != 0) {
-				keylog.add((int) presstime, i, pressed);
+			if (starttime != 0) {
+				keylog.add(presstime - microMarginTime, i, pressed);
 			}
 		}
 	}
@@ -387,13 +396,20 @@ public class BMSPlayerInputProcessor {
 	}
 
 	public boolean isActivated(KeyCommand key) {
+		final int MASK_CTRL = KeyBoardInputProcesseor.MASK_CTRL;
+		final int MASK_CTRL_SHIFT = KeyBoardInputProcesseor.MASK_CTRL|KeyBoardInputProcesseor.MASK_SHIFT;
+
 		switch(key) {
 		case SHOW_FPS:
 			return isControlKeyPressed(ControlKeys.F1);
 		case UPDATE_FOLDER:
 			return isControlKeyPressed(ControlKeys.F2);
 		case OPEN_EXPLORER:
-			return isControlKeyPressed(ControlKeys.F3);
+			return isControlKeyPressed(ControlKeys.F3, 0, MASK_CTRL, MASK_CTRL_SHIFT);
+		case COPY_SONG_MD5_HASH:
+			return isControlKeyPressed(ControlKeys.F3, MASK_CTRL, MASK_CTRL_SHIFT);
+		case COPY_SONG_SHA256_HASH:
+			return isControlKeyPressed(ControlKeys.F3, MASK_CTRL_SHIFT);
 		case SWITCH_SCREEN_MODE:
 			return isControlKeyPressed(ControlKeys.F4);
 		case SAVE_SCREENSHOT:
@@ -487,7 +503,7 @@ public class BMSPlayerInputProcessor {
 	}
 
 	public void poll() {
-		final long now = System.nanoTime() / 1000000 - starttime;
+		final long now = System.nanoTime() / 1000 - starttime;
 		kbinput.poll(now);
 		for (BMControllerInputProcessor controller : bminput) {
 			controller.poll(now);
@@ -498,13 +514,18 @@ public class BMSPlayerInputProcessor {
 		midiinput.close();
 	}
 	
-	static class KeyLogger {
+	/**
+	 * キーロガー
+	 * 
+	 * @author exch
+	 */
+	private static class KeyLogger {
 		
 		public static final int INITIAL_LOG_COUNT = 10000;
 		
-		public final Array<KeyInputLog> keylog;
+		private final Array<KeyInputLog> keylog;
 		
-		public final KeyInputLog[] logpool;
+		private final KeyInputLog[] logpool;
 		private int poolindex;
 
 		public KeyLogger() {
@@ -513,15 +534,25 @@ public class BMSPlayerInputProcessor {
 			clear();
 		}
 		
-		public void add(int time, int keycode, boolean pressed) {
+		/**
+		 * キー入力ログを追加する
+		 * 
+		 * @param presstime キー入力時間(us)
+		 * @param keycode キーコード
+		 * @param pressed 押されたかどうか
+		 */
+		public void add(long presstime, int keycode, boolean pressed) {
 			final KeyInputLog log = poolindex < logpool.length ? logpool[poolindex] : new KeyInputLog();
 			poolindex++;
-			log.time = time;
+			log.presstime = presstime;
 			log.keycode = keycode;
 			log.pressed = pressed;
 			keylog.add(log);
 		}
 		
+		/**
+		 * キーログをクリアする
+		 */
 		public void clear() {
 			keylog.clear();
 			for(int i = 0;i < logpool.length;i++) {
@@ -529,6 +560,10 @@ public class BMSPlayerInputProcessor {
 			}
 		}
 		
+		/**
+		 * 
+		 * @return
+		 */
 		public KeyInputLog[] toArray() {
 			return keylog.toArray(KeyInputLog.class);
 		}

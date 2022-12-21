@@ -2,7 +2,6 @@ package bms.player.beatoraja.play;
 
 import static bms.player.beatoraja.skin.SkinProperty.*;
 
-import java.util.Arrays;
 import java.util.logging.Logger;
 
 import bms.model.BMSModel;
@@ -43,8 +42,8 @@ class KeyInputProccessor {
 		this.scratchKey = new int[laneProperty.getScratchKeyAssign().length];
 	}
 
-	public void startJudge(BMSModel model, KeyInputLog[] keylog) {
-		judge = new JudgeThread(model.getAllTimeLines(), keylog);
+	public void startJudge(BMSModel model, KeyInputLog[] keylog, long milliMarginTime) {
+		judge = new JudgeThread(model.getAllTimeLines(), keylog, milliMarginTime);
 		judge.start();
 		isJudgeStarted = true;
 	}
@@ -149,10 +148,12 @@ class KeyInputProccessor {
 		 * 自動入力するキー入力ログ
 		 */
 		private final KeyInputLog[] keylog;
+		private final long microMarginTime;
 
-		public JudgeThread(TimeLine[] timelines, KeyInputLog[] keylog) {
+		public JudgeThread(TimeLine[] timelines, KeyInputLog[] keylog, long milliMarginTime) {
 			this.timelines = timelines;
 			this.keylog = keylog;
+			this.microMarginTime = milliMarginTime * 1000;
 		}
 
 		@Override
@@ -167,10 +168,11 @@ class KeyInputProccessor {
 			long prevtime = -1;
 			while (!stop) {
 				final long time = player.main.getNowTime(TIMER_PLAY);
+				final long mtime = player.main.getNowMicroTime(TIMER_PLAY);
 				if (time != prevtime) {
 					// リプレイデータ再生
 					if (keylog != null) {
-						while (index < keylog.length && keylog[index].time <= time) {
+						while (index < keylog.length && keylog[index].getTime() + microMarginTime <= mtime) {
 							final KeyInputLog key = keylog[index];
 							// if(input.getKeystate()[key.keycode] ==
 							// key.pressed) {
@@ -178,12 +180,12 @@ class KeyInputProccessor {
 							// key.keycode + " pressed - " + key.pressed +
 							// " time - " + key.time);
 							// }
-							input.setKeyState(key.keycode, key.pressed, key.time);
+							input.setKeyState(key.getKeycode(), key.isPressed(), key.getTime() + microMarginTime);
 							index++;
 						}
 					}
 
-					judge.update(time);
+					judge.update(mtime);
 
 					if (prevtime != -1) {
 						final long nowtime = time - prevtime;

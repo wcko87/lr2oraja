@@ -7,46 +7,46 @@ package bms.player.beatoraja.play;
  */
 public enum JudgeProperty {
 
-    FIVEKEYS(new int[][]{ {-20, 20}, {-50, 50}, {-100, 100}, {-150, 150}, {-150, 500} },
-            new int[][]{ {-30, 30}, {-60, 60}, {-110, 110}, {-160, 160}, {-160, 500}},
-            new int[][]{ {-120, 120}, {-150, 150}, {-200, 200}, {-250, 250}},
-            new int[][]{ {-130, 130}, {-160, 160}, {-110, 110}, {-260, 260}},
+    FIVEKEYS(new long[][]{ {-20000, 20000}, {-50000, 50000}, {-100000, 100000}, {-150000, 150000}, {-150000, 500000} },
+            new long[][]{ {-30000, 30000}, {-60000, 60000}, {-110000, 110000}, {-160000, 160000}, {-160000, 500000}},
+            new long[][]{ {-120000, 120000}, {-150000, 150000}, {-200000, 200000}, {-250000, 250000}},
+            new long[][]{ {-130000, 130000}, {-160000, 160000}, {-110000, 110000}, {-260000, 260000}},
             new boolean[]{true, true, true, false, false, false },
             MissCondition.ALWAYS,
             new boolean[]{true, true, true, true, true, false },
             JudgeWindowRule.NORMAL
             ),
-    SEVENKEYS(new int[][]{ {-20, 20}, {-60, 60}, {-150, 150}, {-280, 220}, {-150, 500} },
-            new int[][]{ {-30, 30}, {-70, 70}, {-160, 160}, {-290, 230}, {-160, 500}},
-            new int[][]{ {-120, 120}, {-160, 160}, {-200, 200}, {-280, 220}},
-            new int[][]{ {-130, 130}, {-170, 170}, {-210, 210}, {-290, 230}},
+    SEVENKEYS(new long[][]{ {-20000, 20000}, {-60000, 60000}, {-150000, 150000}, {-280000, 220000}, {-150000, 500000} },
+            new long[][]{ {-30000, 30000}, {-70000, 70000}, {-160000, 160000}, {-290000, 230000}, {-160000, 500000}},
+            new long[][]{ {-120000, 120000}, {-160000, 160000}, {-200000, 200000}, {-280000, 220000}},
+            new long[][]{ {-130000, 130000}, {-170000, 170000}, {-210000, 210000}, {-290000, 230000}},
             new boolean[]{true, true, true, false, false, true },
             MissCondition.ALWAYS,
             new boolean[]{true, true, true, true, true, false },
             JudgeWindowRule.NORMAL
             ),
-    PMS(new int[][]{ {-20, 20}, {-50, 50}, {-117, 117}, {-183, 183}, {-175, 500} },
-            new int[][]{},
-            new int[][]{ {-120, 120}, {-150, 150}, {-217, 217}, {-283, 283}},
-            new int[][]{},
+    PMS(new long[][]{ {-20000, 20000}, {-50000, 50000}, {-117000, 117000}, {-183000, 183000}, {-175000, 500000} },
+            new long[][]{},
+            new long[][]{ {-120000, 120000}, {-150000, 150000}, {-217000, 217000}, {-283000, 283000}},
+            new long[][]{},
             new boolean[]{true, true, true, false, false, false },
             MissCondition.ONE,
             new boolean[]{true, true, true, false, true, false },
             JudgeWindowRule.PMS
             ),
-	KEYBOARD(new int[][]{ {-30, 30}, {-90, 90}, {-200, 200}, {-320, 240}, {-200, 650} },
-			new int[][]{},
-			new int[][]{ {-160, 25}, {-200, 75}, {-260, 140}, {-320, 240}},
-			new int[][]{},
+	KEYBOARD(new long[][]{ {-30000, 30000}, {-90000, 90000}, {-200000, 200000}, {-320000, 240000}, {-200000, 650000} },
+			new long[][]{},
+			new long[][]{ {-160000, 25000}, {-200000, 75000}, {-260000, 140000}, {-320000, 240000}},
+			new long[][]{},
             new boolean[]{true, true, true, false, false, true },
             MissCondition.ALWAYS,
             new boolean[]{true, true, true, true, true, false },
             JudgeWindowRule.NORMAL
 			),
-    LR2(new int[][]{{-21, 21}, {-60, 60}, {-120, 120}, {-200, 200}, {0, 1000}}, 
-            new int[][]{{-21, 21}, {-60, 60}, {-120, 120}, {-200, 200}, {0, 1000}}, 
-            new int[][]{{-120, 120}, {-120, 120}, {-120, 120}, {-200, 200}}, 
-            new int[][]{{-120, 120}, {-120, 120}, {-120, 120}, {-200, 200}}, 
+    LR2(new long[][]{{-21000, 21000}, {-60000, 60000}, {-120000, 120000}, {-200000, 200000}, {0, 1000000}}, 
+            new long[][]{{-21000, 21000}, {-60000, 60000}, {-120000, 120000}, {-200000, 200000}, {0, 1000000}}, 
+            new long[][]{{-120000, 120000}, {-120000, 120000}, {-120000, 120000}, {-200000, 200000}}, 
+            new long[][]{{-120000, 120000}, {-120000, 120000}, {-120000, 120000}, {-200000, 200000}}, 
             new boolean[]{true, true, true, false, false, true },
             MissCondition.ALWAYS,
             new boolean[]{true, true, true, true, true, false },
@@ -57,19 +57,19 @@ public enum JudgeProperty {
     /**
      * 通常ノートの格判定幅。PG, GR, GD, BD, MSの順で{LATE下限, EARLY上限}のセットで表現する。
      */
-    private final int[][] note;
+    private final long[][] note;
     /**
      * スクラッチノートの格判定幅。PG, GR, GD, BD, MSの順で{LATE下限, EARLY上限}のセットで表現する。
      */
-    private final int[][] scratch;
+    private final long[][] scratch;
     /**
      * 通常ロングノート終端の格判定幅。PG, GR, GD, BD, MSの順で{LATE下限, EARLY上限}のセットで表現する。
      */
-    private final int[][] longnote;
+    private final long[][] longnote;
     /**
      * スクラッチロングノート終端の格判定幅。PG, GR, GD, BD, MSの順で{LATE下限, EARLY上限}のセットで表現する。
      */
-    private final int[][] longscratch;
+    private final long[][] longscratch;
     /**
      * 各判定毎のコンボ継続
      */
@@ -85,7 +85,7 @@ public enum JudgeProperty {
     
     public final JudgeWindowRule windowrule;
 
-    private JudgeProperty(int[][] note, int[][] scratch, int[][] longnote, int[][] longscratch, boolean[] combo, MissCondition miss, boolean[] judgeVanish, JudgeWindowRule windowrule) {
+    private JudgeProperty(long[][] note, long[][] scratch, long[][] longnote, long[][] longscratch, boolean[] combo, MissCondition miss, boolean[] judgeVanish, JudgeWindowRule windowrule) {
         this.note = note;
         this.scratch = scratch;
         this.longnote = longnote;
@@ -97,46 +97,74 @@ public enum JudgeProperty {
     }
 
     public int[][] getNoteJudge(int judgerank, int[] judgeWindowRate) {
-    	return windowrule.create(note, judgerank, judgeWindowRate);
+    	return convertMilli(windowrule.create(note, judgerank, judgeWindowRate));
     }
 
     public int[][] getLongNoteEndJudge(int judgerank, int[] judgeWindowRate) {
-    	return windowrule.create(longnote, judgerank, judgeWindowRate);
+    	return convertMilli(windowrule.create(longnote, judgerank, judgeWindowRate));
     }
 
     public int[][] getScratchJudge(int judgerank, int[] judgeWindowRate) {
-    	return windowrule.create(scratch, judgerank, judgeWindowRate);
+    	return convertMilli(windowrule.create(scratch, judgerank, judgeWindowRate));
     }
 
     public int[][] getLongScratchEndJudge(int judgerank, int[] judgeWindowRate) {
-    	return windowrule.create(longscratch, judgerank, judgeWindowRate);
+    	return convertMilli(windowrule.create(longscratch, judgerank, judgeWindowRate));
+    }
+    
+    private int[][] convertMilli(long[][] judge) {
+    	int[][] mjudge = new int[judge.length][];
+    	for(int i = 0;i < mjudge.length;i++) {
+    		mjudge[i] = new int[judge[i].length];
+    		for(int j = 0;j < mjudge[i].length;j++) {
+        		mjudge[i][j] = (int) (judge[i][j] / 1000);    			
+    		}
+    	}
+    	return mjudge;
+    }
+    
+    public long[][] getJudge(NoteType notetype, int judgerank, int[] judgeWindowRate) {
+    	switch(notetype) {
+    	case NOTE:
+        	return windowrule.create(note, judgerank, judgeWindowRate);
+    	case LONGNOTE_END:
+        	return windowrule.create(longnote, judgerank, judgeWindowRate);
+    	case SCRATCH:
+        	return windowrule.create(scratch, judgerank, judgeWindowRate);
+    	case LONGSCRATCH_END:
+        	return windowrule.create(longscratch, judgerank, judgeWindowRate);
+    	default:
+        	return windowrule.create(note, judgerank, judgeWindowRate);
+    	}
     }
     
     public enum MissCondition {
     	ONE, ALWAYS
     }
     
+    public enum NoteType {
+    	NOTE, LONGNOTE_END, SCRATCH, LONGSCRATCH_END
+    }
+    
     public enum JudgeWindowRule {
         NORMAL (new int[]{25, 50, 75, 100, 125}){
 
 			@Override
-			public int[][] create(int[][] org, int judgerank, int[] judgeWindowRate) {
+			public long[][] create(long[][] org, int judgerank, int[] judgeWindowRate) {
 				return JudgeWindowRule.create(org, judgerank,judgeWindowRate, false);
 			}
     		
     	},
         PMS (new int[]{33, 50, 70, 100, 133}) {
-
-            @Override
-            public int[][] create(int[][] org, int judgerank, int[] judgeWindowRate) {
-                return JudgeWindowRule.create(org, judgerank,judgeWindowRate, true);
-            }
-            
-        },
+			@Override
+			public long[][] create(long[][] org, int judgerank, int[] judgeWindowRate) {
+				return JudgeWindowRule.create(org, judgerank,judgeWindowRate, true);
+			}
+    		
+    	},
         LR2 (new int[]{25, 50, 75, 100, 75}) {
-
             @Override
-            public int[][] create(int[][] org, int judgerank, int[] judgeWindowRate) {
+            public long[][] create(long[][] org, int judgerank, int[] judgeWindowRate) {
                 return JudgeWindowRule.createLR2(org, judgerank, judgeWindowRate);
             }
             
@@ -147,15 +175,15 @@ public enum JudgeProperty {
     	 */
     	public final int[] judgerank;
 
-        private static final int[][] LR2_SCALING = {
+        private static final long[][] LR2_SCALING = {
             {0,0,0,0,0},
-            {0,8,15,18,21}, // PGREAT
-            {0,24,30,40,60}, // GREAT
-            {0,40,60,100,120}, // GOOD
+            {0,8000,15000,18000,21000}, // PGREAT
+            {0,24000,30000,40000,60000}, // GREAT
+            {0,40000,60000,100000,120000}, // GOOD
         };
 
-        private static int lr2JudgeScaling(int base, int judgerank) {
-            int sign = 1;
+        private static long lr2JudgeScaling(long base, int judgerank) {
+            long sign = 1;
             if (base < 0) {
                 base = -base;
                 sign = -1;
@@ -170,7 +198,7 @@ public enum JudgeProperty {
                 while (s < LR2_SCALING.length && base >= LR2_SCALING[s][last]) {
                     ++s;
                 }
-                int n, d, x1, x2;
+                long n, d, x1, x2;
                 if (s < LR2_SCALING.length) {
                     n = base - LR2_SCALING[s-1][last];
                     d = LR2_SCALING[s][last] - LR2_SCALING[s-1][last];
@@ -187,14 +215,14 @@ public enum JudgeProperty {
         }
 
     	
-        private static int[][] createLR2(int[][] org, int judgerank, int[] judgeWindowRate) {
-    		final int[][] judge = new int[org.length][2];
+
+        private static long[][] createLR2(long[][] org, int judgerank, int[] judgeWindowRate) {
+            final long[][] judge = new long[org.length][2];
             for (int i = 0; i < judge.length; i++) {
                 for(int j = 0; j < judge[i].length; j++) {
                     judge[i][j] = org[i][j];
                 }
             }
-
             // Interpolate LR2 Judge windows
             {
                 // only change pgreat, great, good
@@ -232,8 +260,8 @@ public enum JudgeProperty {
         }
 
 
-        private static int[][] create(int[][] org, int judgerank, int[] judgeWindowRate, boolean pms) {
-            final int[][] judge = new int[org.length][2];
+        private static long[][] create(long[][] org, int judgerank, int[] judgeWindowRate, boolean pms) {
+            final long[][] judge = new long[org.length][2];
             final boolean[] fix = pms ? new boolean[]{true, false, false, true, true} : new boolean[]{false, false, false, false, true};
             for (int i = 0; i < judge.length; i++) {
                 for(int j = 0;j < 2;j++) {
@@ -285,6 +313,6 @@ public enum JudgeProperty {
         	this.judgerank = judgerank;
         }
         
-    	public abstract int[][] create(int[][] org, int judgerank, int[] judgeWindowRate);
+    	public abstract long[][] create(long[][] org, int judgerank, int[] judgeWindowRate);
     }
 }
