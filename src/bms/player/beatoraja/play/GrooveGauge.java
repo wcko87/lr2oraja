@@ -291,27 +291,7 @@ public class GrooveGauge {
 				float fix2=1.0f;
 				if(f < 0) {
 					// トータル補正 (<240)
-					if(model.getTotal()>=240.0){
-						fix1=1.0f;
-					}else if(model.getTotal()>=230.0){
-						fix1=1.11f;
-					}else if(model.getTotal()>=210.0){
-						fix1=1.25f;
-					}else if(model.getTotal()>=200.0){
-						fix1=1.5f;
-					}else if(model.getTotal()>=180.0){
-						fix1=1.666f;
-					}else if(model.getTotal()>=160.0){
-						fix1=2.0f;
-					}else if(model.getTotal()>=150.0){
-						fix1=2.5f;
-					}else if(model.getTotal()>=130.0){
-						fix1=3.333f;
-					}else if(model.getTotal()>=120.0){
-						fix1=5.0f;
-					}else{
-						fix1=10.0f;
-					}
+					fix1 = 10.0 / Math.min(10.0, Math.max(1.0, Math.floor(model.getTotal() / 16.0) - 5.0));
 
 					// ノート数補正 (<1000)
 					if(model.getTotalNotes()<=20) {
