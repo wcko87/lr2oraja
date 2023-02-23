@@ -8,8 +8,10 @@ public class Discord {
     public static final DiscordRichPresence presence = new DiscordRichPresence();
 
     private static final DiscordRPC lib = DiscordRPC.INSTANCE;
-
+    /*
     private static final String APPLICATIONID = "876968973126746182"; // DISCORD APPLICATION ID   (https://discord.com/developers/applications)
+    */
+    private static final String APPLICATIONID = "1054234988167561277"; // LR2ORAJA DISCORD APPLICATION ID
 
     public String state;
     public String details;
