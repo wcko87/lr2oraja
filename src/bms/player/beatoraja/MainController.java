@@ -96,6 +96,8 @@ public class MainController extends ApplicationAdapter {
 
 	private RivalDataAccessor rivals = new RivalDataAccessor();
 
+	private RankingDataCache ircache = new RankingDataCache();
+
 	private SpriteBatch sprite;
 	/**
 	 * 1曲プレイで指定したBMSファイル
@@ -223,6 +225,10 @@ public class MainController extends ApplicationAdapter {
 	public RivalDataAccessor getRivalDataAccessor() {
 		return rivals;
 	}
+	
+	public RankingDataCache getRankingDataCache() {
+		return ircache;
+	}
 
 	public SpriteBatch getSpriteBatch() {
 		return sprite;
@@ -244,7 +250,7 @@ public class MainController extends ApplicationAdapter {
 		MainState newState = null;
 		switch (state) {
 		case MUSICSELECT:
-			discord = new Discord("MUSIC SELECT");
+			discord = new Discord("In Music Select Menu", "");
 			discord.update();
 			if (this.bmsfile != null) {
 				exit();
@@ -263,11 +269,13 @@ public class MainController extends ApplicationAdapter {
 			newState = bmsplayer;
 			break;
 		case RESULT:
-			discord = new Discord("RESULT");
+			discord = new Discord("Result Screen", "");
 			discord.update();
 			newState = result;
 			break;
 		case COURSERESULT:
+			discord = new Discord("Result Screen", "");
+			discord.update();
 			newState = gresult;
 			break;
 		case CONFIG:
