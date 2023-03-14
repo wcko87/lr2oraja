@@ -150,6 +150,8 @@ public class JudgeManager {
 	 */
 	private int recentJudgesIndex = 0;
 
+	private MultiBadCollector multiBadCollector = new MultiBadCollector();
+
 	public JudgeManager(BMSPlayer main) {
 		this.main = main;
 		this.keysound = main.main.getAudioProcessor();
@@ -295,7 +297,7 @@ public class JudgeManager {
 					if (note instanceof NormalNote && note.getState() == 0) {
 						auto_presstime[laneassign[lane][0]] = now;
 						keysound.play(note, config.getAudioConfig().getKeyvolume(), 0);
-						this.updateMicro(lane, note, mtime, 0, 0);
+						this.updateMicro(lane, note, mtime, 0, 0, false);
 					}
 					if (note instanceof LongNote) {
 						final LongNote ln = (LongNote) note;
@@ -308,7 +310,7 @@ public class JudgeManager {
 								//LN時のレーザー色変更処理
 								this.judge[player[lane]][offset[lane]] = 8;
 							} else {
-								this.updateMicro(lane, ln, mtime, 0, 0);
+								this.updateMicro(lane, ln, mtime, 0, 0, false);
 							}
 							processing[lane] = ln.getPair();
 						}
@@ -320,7 +322,7 @@ public class JudgeManager {
 									auto_presstime[laneassign[lane][0]] = Long.MIN_VALUE;
 									auto_presstime[laneassign[lane][1]] = now;
 								}
-								this.updateMicro(lane, ln, mtime, 0, 0);
+								this.updateMicro(lane, ln, mtime, 0, 0, false);
 								keysound.play(processing[lane], config.getAudioConfig().getKeyvolume(), 0);
 								processing[lane] = null;
 							}
@@ -415,7 +417,7 @@ public class JudgeManager {
 							;
 
 						keysound.play(processing[lane], config.getAudioConfig().getKeyvolume(), 0);
-						this.updateMicro(lane, processing[lane], mtime, j, dmtime);
+						this.updateMicro(lane, processing[lane], mtime, j, dmtime, false);
 //						 System.out.println("BSS終端判定 - Time : " + ptime + " Judge : " + j + " LN : " + processing[lane].hashCode());
 						processing[lane] = null;
 						sckey[sc] = 0;
@@ -428,6 +430,8 @@ public class JudgeManager {
 					lanemodel.reset();
 					Note tnote = null;
 					int j = 0;
+					multiBadCollector.clear();
+					multiBadCollector.setJudge(mjudge);
 					for (Note judgenote = lanemodel.getNote(); judgenote != null; judgenote = lanemodel.getNote()) {
 						final long dmtime = judgenote.getMicroTime() - pmtime;
 						if (dmtime >= mjudgeend) {
@@ -440,12 +444,18 @@ public class JudgeManager {
 								&& ((LongNote) judgenote).isEnd())) {
 							continue;
 						}
+						if (judgenote.getState() == 0) {
+							multiBadCollector.add(judgenote, dmtime);
+						}
 						if (tnote == null || tnote.getState() != 0 || algorithm.compare(tnote, judgenote, pmtime, mjudge)) {
 							if (!(miss == MissCondition.ONE && (judgenote.getState() != 0
 									|| (judgenote.getState() == 0 && judgenote.getPlayTime() != 0
 											&& (dmtime > mjudge[2][1] || dmtime < mjudge[2][0]))))) {
 								if (judgenote.getState() != 0) {
 									j = (dmtime >= mjudge[4][0] && dmtime <= mjudge[4][1]) ? 5 : 6;
+								} else if (judgenote instanceof LongNote && dmtime < mjudge[2][0]) {
+									//LR2oraja: Remove late bad for LN
+									j = 6;
 								} else {
 									for (j = 0; j < mjudge.length
 											&& !(dmtime >= mjudge[j][0] && dmtime <= mjudge[j][1]); j++) {
@@ -464,8 +474,14 @@ public class JudgeManager {
 							}
 						}
 					}
+					multiBadCollector.filter(tnote);
 
 					if (tnote != null) {
+						// process multiBad
+						for (int i=multiBadCollector.arrayStart; i<multiBadCollector.size; i++) {
+							this.updateMicro(lane, multiBadCollector.noteList[i], mtime, 3, multiBadCollector.timeList[i], true);
+						}
+
 						// TODO この時点で空POOR処理を分岐させるべきか
 						if (tnote instanceof LongNote) {
 							// ロングノート処理
@@ -479,7 +495,7 @@ public class JudgeManager {
 								//LN時のレーザー色変更処理
 								this.judge[player[lane]][offset[lane]] = 8;
 							} else {
-								this.updateMicro(lane, ln, mtime, j, dmtime);
+								this.updateMicro(lane, ln, mtime, j, dmtime, false);
 							}
 							if (j < 4) {
 								processing[lane] = ln.getPair();
@@ -493,7 +509,7 @@ public class JudgeManager {
 							keysound.play(tnote, config.getAudioConfig().getKeyvolume(), 0);
 							// 通常ノート処理
 							final long dmtime = tnote.getMicroTime() - pmtime;
-							this.updateMicro(lane, tnote, mtime, j, dmtime);
+							this.updateMicro(lane, tnote, mtime, j, dmtime, false);
 						}
 					} else {
 						// 空POOR判定がないときのレーザー色変更処理
@@ -552,7 +568,7 @@ public class JudgeManager {
 							if (j >= 3) {
 								keysound.setVolume(processing[lane].getPair(), 0.0f);
 							}
-							this.updateMicro(lane, processing[lane], mtime, j, dmtime);
+							this.updateMicro(lane, processing[lane], mtime, j, dmtime, false);
 							keysound.play(processing[lane], config.getAudioConfig().getKeyvolume(), 0);
 							processing[lane] = null;
 						}
@@ -576,7 +592,7 @@ public class JudgeManager {
 							if (j >= 3) {
 								keysound.setVolume(processing[lane].getPair(), 0.0f);
 							}
-							this.updateMicro(lane, processing[lane].getPair(), mtime, Math.min(j, 3), dmtime);
+							this.updateMicro(lane, processing[lane].getPair(), mtime, Math.min(j, 3), dmtime, false);
 							keysound.play(processing[lane], config.getAudioConfig().getKeyvolume(), 0);
 							processing[lane] = null;
 //							System.out.println("LN途中離し判定 - Time : " + ptime + " Judge : " + j + " LN : " + processing[lane]);	
@@ -602,7 +618,7 @@ public class JudgeManager {
 						break;
 					}
 				}
-				this.updateMicro(lane, processing[lane].getPair(), mtime, j, mpassingcount[lane]);
+				this.updateMicro(lane, processing[lane].getPair(), mtime, j, mpassingcount[lane], false);
 				keysound.play(processing[lane], config.getAudioConfig().getKeyvolume(), 0);
 				processing[lane] = null;
 			}
@@ -613,7 +629,7 @@ public class JudgeManager {
 					&& note.getMicroTime() < mtime + mjudge[3][0]; note = lanemodel.getNote()) {
 				final int mjud = (int) (note.getMicroTime() - mtime);
 				if (note instanceof NormalNote && note.getState() == 0) {
-					this.updateMicro(lane, note, mtime, 4, mjud);
+					this.updateMicro(lane, note, mtime, 4, mjud, false);
 				} else if (note instanceof LongNote) {
 					final LongNote ln = (LongNote) note;
 					if (!ln.isEnd() && note.getState() == 0) {
@@ -621,13 +637,13 @@ public class JudgeManager {
 								|| ln.getType() == LongNote.TYPE_CHARGENOTE
 								|| ln.getType() == LongNote.TYPE_HELLCHARGENOTE) {
 							// System.out.println("CN start poor");
-							this.updateMicro(lane, note, mtime, 4, mjud);
-							this.updateMicro(lane, ((LongNote) note).getPair(), mtime, 4, mjud);
+							this.updateMicro(lane, note, mtime, 4, mjud, false);
+							this.updateMicro(lane, ((LongNote) note).getPair(), mtime, 4, mjud, false);
 						}
 						if (((lntype == BMSModel.LNTYPE_LONGNOTE && ln.getType() == LongNote.TYPE_UNDEFINED)
 								|| ln.getType() == LongNote.TYPE_LONGNOTE) && processing[lane] != ln.getPair()) {
 							// System.out.println("LN start poor");
-							this.updateMicro(lane, note, mtime, 4, mjud);
+							this.updateMicro(lane, note, mtime, 4, mjud, false);
 						}
 
 					}
@@ -635,7 +651,7 @@ public class JudgeManager {
 							|| ln.getType() == LongNote.TYPE_CHARGENOTE || ln.getType() == LongNote.TYPE_HELLCHARGENOTE)
 							&& ((LongNote) note).isEnd() && ((LongNote) note).getState() == 0) {
 						// System.out.println("CN end poor");
-						this.updateMicro(lane, ((LongNote) note), mtime, 4, mjud);
+						this.updateMicro(lane, ((LongNote) note), mtime, 4, mjud, false);
 						processing[lane] = null;
 						if (sc >= 0) {
 							sckey[sc] = 0;
@@ -654,7 +670,7 @@ public class JudgeManager {
 	private final int[] JUDGE_TIMER = { TIMER_JUDGE_1P, TIMER_JUDGE_2P, TIMER_JUDGE_3P };
 	private final int[] COMBO_TIMER = { TIMER_COMBO_1P, TIMER_COMBO_2P, TIMER_COMBO_3P };
 
-	private void updateMicro(int lane, Note n, long mtime, int judge, long mfast) {
+	private void updateMicro(int lane, Note n, long mtime, int judge, long mfast, boolean multiBad) {
 		if (judgeVanish[judge]) {
 			if (pastNotes < ghost.length) {
 				ghost[pastNotes] = judge;
@@ -713,7 +729,9 @@ public class JudgeManager {
 			mjudgefast[lane / (lanelength / judgenow.length)] = mfast;
 		}
 		main.update(judge, mtime / 1000);
-		keysound.play(judge, mfast >= 0);
+		if (!multiBad) {
+			keysound.play(judge, mfast >= 0);
+		}
 
 		final PlayerConfig player = main.main.getPlayerConfig();
 		if(player.isNotesDisplayTimingAutoAdjust()) {
@@ -855,4 +873,121 @@ public class JudgeManager {
 	public int[] getGhost() {
 		return ghost;
 	}
+
+	private final class MultiBadCollector {
+		private long[][] mjudge;
+		private boolean enabled;
+
+		public Note[] noteList;
+		public long[] timeList;
+		public int size;
+		public int arrayStart;
+
+
+		public MultiBadCollector() {
+			noteList = new Note[256];
+			timeList = new long[256];
+			size = 0;
+			arrayStart = 0;
+			enabled = true;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
+			if (!this.enabled) {
+				clear();
+			}
+		}
+
+		public void clear() {
+			size = 0;
+			arrayStart = 0;
+		}
+
+		public void setJudge(long[][] mjudge) {
+			this.mjudge = mjudge;
+		}
+
+		public void add(Note note, long dmtime) {
+			if (!enabled) return;
+			if (size >= noteList.length) {
+				int newLength = noteList.length*2;
+				noteList = Arrays.copyOf(noteList, newLength);
+				timeList = Arrays.copyOf(timeList, newLength);
+			}
+			noteList[size] = note;
+			timeList[size] = dmtime;
+			size++;
+		}
+
+		public void filter(Note tnote) {
+			if (!enabled || tnote == null) {
+				return;
+			}
+			long tdmtime = -1;
+			for (int i=0; i<size; ++i) {
+				if (tnote == noteList[i]) {
+					tdmtime = timeList[i];
+				}
+			}
+			if (tdmtime == -1) {
+				System.out.println("ERROR: UNABLE TO FIND TNOTE");
+			}
+			// JUDGE WINDOWS | 2 - GOOD
+			// 0 - PGREAT    | 3 - BAD
+			// 1 - GREAT     | 4 - MASHPOOR
+			// Windows are inclusive (<= and >=)
+			long goodStart = mjudge[2][0];
+			long goodEnd = mjudge[2][1];
+			long badStart = mjudge[3][0];
+			long badEnd = mjudge[3][1];
+
+			// 0. Add all notes within range (including LN)
+			// 1. Filter out notes not within bad range (include late bad LNs)
+			// 2. Remove tnote from the list
+			int newIndex = 0;
+			for (int i=0; i<size; i++) {
+				if (timeList[i] < badStart || timeList[i] > badEnd) continue;
+				if (timeList[i] >= goodStart && timeList[i] <= goodEnd) continue;
+				if (noteList[i] == tnote) continue;
+
+				noteList[newIndex] = noteList[i];
+				timeList[newIndex] = timeList[i];
+				newIndex++;
+			}
+			size = newIndex;
+
+			// Insertion sort to ensure that the array is sorted by dmtime (fast if already sorted)
+			for (int i=1; i<size; i++) {
+				for (int j=i; j>0 && timeList[j-1] > timeList[j]; j--) {
+					Note temp = noteList[j];
+					noteList[j] = noteList[j-1];
+					noteList[j-1] = temp;
+					long temp2 = timeList[j];
+					timeList[j] = timeList[j-1];
+					timeList[j-1] = temp2;
+				}
+			}
+
+			// 3. If tnote is an LN or not a bad, remove all notes after tnote in the list.
+			boolean tnoteIsBad = (badStart <= tdmtime && tdmtime < goodStart) || (goodEnd < tdmtime && tdmtime <= badEnd);
+			if (!tnoteIsBad || (tnote instanceof LongNote)) {
+				for (int i=0; i<size; i++) {
+					if (timeList[i] >= tdmtime) {
+						size = i;
+						break;
+					}
+				}
+			}
+
+			// 4. Remove all preceding LNs before tnote in the list
+			arrayStart = size;
+			for (int i=0; i<size; i++) {
+				if ((timeList[i] >= tdmtime) || !(noteList[i] instanceof LongNote)) {
+					arrayStart = i;
+					break;
+				}
+			}
+		}
+	}	
 }
