@@ -448,7 +448,7 @@ public class JudgeManager {
                     if (tnote != null) {
                         // process multiBad
                         for (int i=multiBadCollector.arrayStart; i<multiBadCollector.size; i++) {
-                            this.updateMicroMultiBad(state, multiBadCollector.noteList[i], mtime, 3, multiBadCollector.timeList[i], false);
+                            this.updateMicroMultiBad(state, multiBadCollector.noteList[i], mtime, 3, multiBadCollector.timeList[i], judgeVanish[3]);
                         }
 
                         // TODO この時点で空POOR処理を分岐させるべきか
