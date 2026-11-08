@@ -10,6 +10,8 @@ import bms.player.beatoraja.ir.IRConnectionManager;
 import bms.player.beatoraja.pattern.*;
 import bms.player.beatoraja.play.GrooveGauge;
 import bms.player.beatoraja.select.BarSorter;
+import bms.player.beatoraja.select.DifficultyFilter;
+import bms.player.beatoraja.select.ModeFilter;
 import bms.player.beatoraja.skin.SkinType;
 
 import bms.model.Mode;
@@ -25,6 +27,20 @@ import com.badlogic.gdx.utils.SerializationException;
  * @author exch
  */
 public final class PlayerConfig {
+	public static final int MISS_LAYER_DURATION_MIN = 0;
+	public static final int MISS_LAYER_DURATION_MAX = 5000;
+	public static final int HRAN_THRESHOLD_BPM_MIN = 1;
+	public static final int HRAN_THRESHOLD_BPM_MAX = 1000;
+	public static final int EXIT_PRESS_DURATION_MIN = 0;
+	public static final int EXIT_PRESS_DURATION_MAX = 100000;
+	public static final int EXTRA_NOTE_DEPTH_MIN = 0;
+	public static final int EXTRA_NOTE_DEPTH_MAX = 100;
+	public static final int MAX_REQUEST_COUNT_MIN = 0;
+	public static final int MAX_REQUEST_COUNT_MAX = 100;
+	private static final long MAX_PLAYER_CONFIG_FILE_SIZE = 1024 * 1024;
+	private static final int MAX_SKIN_HISTORY_ENTRIES = 256;
+	private static final int MAX_TARGET_LIST_ENTRIES = 64;
+	private static final int MAX_PLAYER_NAME_LENGTH = 64;
 
 	/**
 	 * 旧コンフィグパス。そのうち削除
@@ -87,6 +103,15 @@ public final class PlayerConfig {
      * 選曲時のモードフィルター
      */
 	private Mode mode = null;
+	private ModeFilter modeFilter = ModeFilter.ALL;
+	/**
+	 * 選曲時に切り替え可能なMODEフィルター。複合フィルターはデフォルトでは含めない。
+	 */
+	private ModeFilter[] enabledModeFilters = ModeFilter.defaultFilters();
+	/**
+	 * 選曲時の難易度フィルター
+	 */
+	private DifficultyFilter difficultyFilter = DifficultyFilter.ALL;
 	/**
 	 * 指定がない場合のミスレイヤー表示時間(ms)
 	 */
@@ -117,6 +142,7 @@ public final class PlayerConfig {
 	private int scratchJudgeWindowRatePerfectGreat = 400;
 	private int scratchJudgeWindowRateGreat = 400;
 	private int scratchJudgeWindowRateGood = 100;
+	private int longnoteMarginRate = 100;
 
 	/**
 	 * 地雷モード
@@ -224,6 +250,11 @@ public final class PlayerConfig {
 	 * 選択中の選曲時ソート
 	 */
 	private String sortid;
+
+	/**
+	 * Sort choices in cycling order. Numeric skin IDs remain unchanged.
+	 */
+	private BarSorter[] enabledBarSorters = BarSorter.defaultSorter.clone();
 
 	/**
 	 * 選曲時でのキー入力方式
@@ -420,6 +451,9 @@ public final class PlayerConfig {
 	}
 
 	public PlayModeConfig getMode5() {
+		if (mode5 == null) {
+			mode5 = new PlayModeConfig(Mode.BEAT_5K);
+		}
 		return mode5;
 	}
 
@@ -428,6 +462,9 @@ public final class PlayerConfig {
 	}
 
 	public PlayModeConfig getMode7() {
+		if (mode7 == null) {
+			mode7 = new PlayModeConfig(Mode.BEAT_7K);
+		}
 		return mode7;
 	}
 
@@ -436,7 +473,7 @@ public final class PlayerConfig {
 	}
 
 	public PlayModeConfig getMode10() {
-		if(mode10 == null || mode10.getController().length < 2) {
+		if(mode10 == null || mode10.getController() == null || mode10.getController().length < 2) {
 			mode10 = new PlayModeConfig(Mode.BEAT_10K);
 			Logger.getGlobal().warning("mode10のPlayConfigを再構成");
 		}
@@ -448,7 +485,7 @@ public final class PlayerConfig {
 	}
 
 	public PlayModeConfig getMode14() {
-		if(mode14 == null || mode14.getController().length < 2) {
+		if(mode14 == null || mode14.getController() == null || mode14.getController().length < 2) {
 			mode14 = new PlayModeConfig(Mode.BEAT_14K);
 			Logger.getGlobal().warning("mode14のPlayConfigを再構成");
 		}
@@ -460,6 +497,9 @@ public final class PlayerConfig {
 	}
 
 	public PlayModeConfig getMode9() {
+		if (mode9 == null) {
+			mode9 = new PlayModeConfig(Mode.POPN_9K);
+		}
 		return mode9;
 	}
 
@@ -468,6 +508,9 @@ public final class PlayerConfig {
 	}
 
 	public PlayModeConfig getMode24() {
+		if (mode24 == null) {
+			mode24 = new PlayModeConfig(Mode.KEYBOARD_24K);
+		}
 		return mode24;
 	}
 
@@ -476,7 +519,7 @@ public final class PlayerConfig {
 	}
 
 	public PlayModeConfig getMode24double() {
-		if(mode24double == null || mode24double.getController().length < 2) {
+		if(mode24double == null || mode24double.getController() == null || mode24double.getController().length < 2) {
 			mode24double = new PlayModeConfig(Mode.KEYBOARD_24K_DOUBLE);
 			Logger.getGlobal().warning("mode24doubleのPlayConfigを再構成");
 		}
@@ -488,11 +531,51 @@ public final class PlayerConfig {
 	}
 
 	public void setMode(Mode m)  {
-		this.mode = m;
+		setModeFilter(ModeFilter.fromMode(m));
 	}
 
 	public Mode getMode()  {
-		return mode;
+		return getModeFilter().getPrimaryMode();
+	}
+
+	public void setModeFilter(ModeFilter modeFilter) {
+		this.modeFilter = modeFilter != null ? modeFilter : ModeFilter.ALL;
+		this.mode = this.modeFilter.getPrimaryMode();
+	}
+
+	public ModeFilter getModeFilter() {
+		if (modeFilter == null) {
+			modeFilter = ModeFilter.fromMode(mode);
+		}
+		return modeFilter;
+	}
+
+	public ModeFilter[] getEnabledModeFilters() {
+		return enabledModeFilters.clone();
+	}
+
+	public void setEnabledModeFilters(ModeFilter[] enabledModeFilters) {
+		this.enabledModeFilters = sanitizeModeFilters(enabledModeFilters);
+	}
+
+	public boolean isModeFilterEnabled(ModeFilter filter) {
+		for (ModeFilter enabledFilter : enabledModeFilters) {
+			if (enabledFilter == filter) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public void setDifficultyFilter(DifficultyFilter difficultyFilter) {
+		this.difficultyFilter = difficultyFilter != null ? difficultyFilter : DifficultyFilter.ALL;
+	}
+
+	public DifficultyFilter getDifficultyFilter() {
+		if (difficultyFilter == null) {
+			difficultyFilter = DifficultyFilter.ALL;
+		}
+		return difficultyFilter;
 	}
 	
 	public int getSort() {
@@ -511,6 +594,35 @@ public final class PlayerConfig {
 		this.sortid = sortid;
 	}
 
+	public BarSorter[] getEnabledBarSorters() {
+		return enabledBarSorters.clone();
+	}
+
+	public void setEnabledBarSorters(BarSorter[] sorters) {
+		enabledBarSorters = sanitizeBarSorters(sorters);
+	}
+
+	public void cycleBarSorter(int direction) {
+		int index = -1;
+		for (int i = 0; i < enabledBarSorters.length; i++) {
+			if (enabledBarSorters[i].name().equals(sortid)) {
+				index = i;
+				break;
+			}
+		}
+		int next = index < 0 ? (direction >= 0 ? 0 : enabledBarSorters.length - 1)
+				: Math.floorMod(index + (direction >= 0 ? 1 : -1), enabledBarSorters.length);
+		BarSorter selected = enabledBarSorters[next];
+		sortid = selected.name();
+		// Keep the legacy eight-choice numeric property independent of array order.
+		for (int i = 0; i < BarSorter.defaultSorter.length; i++) {
+			if (BarSorter.defaultSorter[i] == selected) {
+				sort = i;
+				break;
+			}
+		}
+	}
+
 
 	public int getMusicselectinput() {
 		return musicselectinput;
@@ -521,8 +633,17 @@ public final class PlayerConfig {
 	}
 
 	public SkinConfig[] getSkin() {
-		if(skin.length <= SkinType.getMaxSkinTypeID()) {
+		if(skin == null || skin.length != SkinType.getMaxSkinTypeID() + 1) {
+			if (skin == null) {
+				skin = new SkinConfig[SkinType.getMaxSkinTypeID() + 1];
+			} else {
 			skin = Arrays.copyOf(skin, SkinType.getMaxSkinTypeID() + 1);
+			}
+			for (int i = 0; i < skin.length; i++) {
+				if (skin[i] == null || !skin[i].validate()) {
+					skin[i] = getDefaultSkinConfig(i);
+				}
+			}
 			Logger.getGlobal().warning("skinを再構成");
 		}
 		return skin;
@@ -629,6 +750,14 @@ public final class PlayerConfig {
 
 	public void setScratchJudgeWindowRateGood(int judgeWindowRateGood) {
 		this.scratchJudgeWindowRateGood = judgeWindowRateGood;
+	}
+
+	public int getLongnoteMarginRate() {
+		return longnoteMarginRate;
+	}
+
+	public void setLongnoteMarginRate(int longnoteMarginRate) {
+		this.longnoteMarginRate = longnoteMarginRate;
 	}
 
 	public int getHranThresholdBPM() {
@@ -795,11 +924,14 @@ public final class PlayerConfig {
 			skin = Arrays.copyOf(skin, SkinType.getMaxSkinTypeID() + 1);
 		}
 		for(int i = 0;i < skin.length;i++) {
-			if(skin[i] == null) {
-				skin[i] = SkinConfig.getDefault(i);
+			if(skin[i] == null || !skin[i].validate()) {
+				skin[i] = getDefaultSkinConfig(i);
 			}
-			skin[i].validate();
 		}
+		if (skinHistory.length > MAX_SKIN_HISTORY_ENTRIES) {
+			skinHistory = Arrays.copyOf(skinHistory, MAX_SKIN_HISTORY_ENTRIES);
+		}
+		skinHistory = Validatable.removeInvalidElements(skinHistory);
 
 		if(mode5 == null) {
 			mode5 = new PlayModeConfig(Mode.BEAT_5K);
@@ -823,28 +955,40 @@ public final class PlayerConfig {
 		if(mode24double == null) {
 			mode24double = new PlayModeConfig(Mode.KEYBOARD_24K_DOUBLE);
 		}
-		mode5.validate(7);
-		mode7.validate(9);
-		mode10.validate(14);
-		mode14.validate(18);
-		mode9.validate(9);
-		mode24.validate(26);
-		mode24double.validate(52);
+		mode5.validate(Mode.BEAT_5K);
+		mode7.validate(Mode.BEAT_7K);
+		mode10.validate(Mode.BEAT_10K);
+		mode14.validate(Mode.BEAT_14K);
+		mode9.validate(Mode.POPN_9K);
+		mode24.validate(Mode.KEYBOARD_24K);
+		mode24double.validate(Mode.KEYBOARD_24K_DOUBLE);
 
 		sort = MathUtils.clamp(sort, 0 , BarSorter.defaultSorter.length - 1);
-		if(sortid == null) {
+		enabledBarSorters = sanitizeBarSorters(enabledBarSorters);
+		if(!isKnownBarSorter(sortid)) {
 			sortid = BarSorter.defaultSorter[sort].name();
 		}
 
 		gauge = MathUtils.clamp(gauge, 0, 5);
+		gaugeAutoShift = MathUtils.clamp(gaugeAutoShift, GAUGEAUTOSHIFT_NONE, GAUGEAUTOSHIFT_SELECT_TO_UNDER);
+		bottomShiftableGauge = MathUtils.clamp(bottomShiftableGauge, GrooveGauge.ASSISTEASY, GrooveGauge.NORMAL);
 		random = MathUtils.clamp(random, 0, 9);
 		random2 = MathUtils.clamp(random2, 0, 9);
 		doubleoption = MathUtils.clamp(doubleoption, 0, 3);
-		chartReplicationMode = chartReplicationMode != null ? chartReplicationMode : "NONE";
-		targetid = targetid!= null ? targetid : "MAX";
-		targetlist = targetlist != null ? targetlist : new String[0];
+		name = sanitizePlayerName(name);
+		chartReplicationMode = chartReplicationMode != null && !chartReplicationMode.isBlank() ? chartReplicationMode : "NONE";
+		targetid = targetid != null && !targetid.isBlank() ? targetid : "MAX";
+		targetlist = sanitizeTargetList(targetlist);
 		judgetiming = MathUtils.clamp(judgetiming, JUDGETIMING_MIN, JUDGETIMING_MAX);
-		misslayerDuration = MathUtils.clamp(misslayerDuration, 0, 5000);
+		misslayerDuration = MathUtils.clamp(misslayerDuration, MISS_LAYER_DURATION_MIN, MISS_LAYER_DURATION_MAX);
+		if (modeFilter == null || (mode != null && modeFilter == ModeFilter.ALL)) {
+			setModeFilter(ModeFilter.fromMode(mode));
+		} else {
+			setModeFilter(modeFilter);
+		}
+		enabledModeFilters = sanitizeModeFilters(enabledModeFilters);
+		setDifficultyFilter(difficultyFilter);
+		musicselectinput = MathUtils.clamp(musicselectinput, 0, 2);
 		lnmode = MathUtils.clamp(lnmode, 0, 2);
 		keyJudgeWindowRatePerfectGreat = MathUtils.clamp(keyJudgeWindowRatePerfectGreat, 25, 400);
 		keyJudgeWindowRateGreat = MathUtils.clamp(keyJudgeWindowRateGreat, 0, 400);
@@ -852,7 +996,8 @@ public final class PlayerConfig {
 		scratchJudgeWindowRatePerfectGreat = MathUtils.clamp(scratchJudgeWindowRatePerfectGreat, 25, 400);
 		scratchJudgeWindowRateGreat = MathUtils.clamp(scratchJudgeWindowRateGreat, 0, 400);
 		scratchJudgeWindowRateGood = MathUtils.clamp(scratchJudgeWindowRateGood, 0, 400);
-		hranThresholdBPM = MathUtils.clamp(hranThresholdBPM, 1, 1000);
+		longnoteMarginRate = MathUtils.clamp(longnoteMarginRate, 0, 400);
+		hranThresholdBPM = MathUtils.clamp(hranThresholdBPM, HRAN_THRESHOLD_BPM_MIN, HRAN_THRESHOLD_BPM_MAX);
 		
 		if(autosavereplay == null) {
 			autosavereplay = new int[4];
@@ -862,15 +1007,15 @@ public final class PlayerConfig {
 		}
 		sevenToNinePattern = MathUtils.clamp(sevenToNinePattern, 0, 6);
 		sevenToNineType = MathUtils.clamp(sevenToNineType, 0, 2);
-		exitPressDuration = MathUtils.clamp(exitPressDuration, 0, 100000);
+		exitPressDuration = MathUtils.clamp(exitPressDuration, EXIT_PRESS_DURATION_MIN, EXIT_PRESS_DURATION_MAX);
 
 		scrollMode = MathUtils.clamp(scrollMode, 0, ScrollSpeedModifier.Mode.values().length);
 		scrollSection = MathUtils.clamp(scrollSection, 1, 1024);
-		scrollRate = MathUtils.clamp(scrollRate, 0, 1.0);
+		scrollRate = clampFinite(scrollRate, 0, 1.0, 0.5);
 		longnoteMode = MathUtils.clamp(longnoteMode, 0, LongNoteModifier.Mode.values().length);
-		longnoteRate = MathUtils.clamp(longnoteRate, 0.0, 1.0);
+		longnoteRate = clampFinite(longnoteRate, 0.0, 1.0, 1.0);
 		mineMode = MathUtils.clamp(mineMode, 0, MineNoteModifier.Mode.values().length);
-		extranoteDepth = MathUtils.clamp(extranoteDepth, 0, 100);
+		extranoteDepth = MathUtils.clamp(extranoteDepth, EXTRA_NOTE_DEPTH_MIN, EXTRA_NOTE_DEPTH_MAX);
 
 		if(irconfig == null || irconfig.length == 0) {
 			String[] irnames = IRConnectionManager.getAllAvailableIRConnectionName();
@@ -894,15 +1039,103 @@ public final class PlayerConfig {
 		irconfig = Validatable.removeInvalidElements(irconfig);
 
 		// --Stream
-		maxRequestCount = MathUtils.clamp(maxRequestCount, 0, 100);
+		maxRequestCount = MathUtils.clamp(maxRequestCount, MAX_REQUEST_COUNT_MIN, MAX_REQUEST_COUNT_MAX);
+	}
+
+	private static BarSorter[] sanitizeBarSorters(BarSorter[] sorters) {
+		if (sorters == null || sorters.length == 0) {
+			return BarSorter.defaultSorter.clone();
+		}
+		Set<BarSorter> uniqueSorters = new LinkedHashSet<>();
+		for (BarSorter sorter : sorters) {
+			if (sorter != null) {
+				uniqueSorters.add(sorter);
+			}
+		}
+		return uniqueSorters.isEmpty() ? BarSorter.defaultSorter.clone() : uniqueSorters.toArray(BarSorter[]::new);
+	}
+
+	private static boolean isKnownBarSorter(String sorterName) {
+		if (sorterName == null) {
+			return false;
+		}
+		for (BarSorter sorter : BarSorter.allSorter) {
+			if (sorter.name().equals(sorterName)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static String sanitizePlayerName(String value) {
+		if (value == null || value.isBlank()) {
+			return "NO NAME";
+		}
+		return value.substring(0, Math.min(value.length(), MAX_PLAYER_NAME_LENGTH));
+	}
+
+	private static SkinConfig getDefaultSkinConfig(int skinTypeId) {
+		SkinConfig defaultConfig = SkinConfig.getDefault(skinTypeId);
+		return defaultConfig.validate() ? defaultConfig : null;
+	}
+
+	private static String[] sanitizeTargetList(String[] values) {
+		if (values == null) {
+			return new String[0];
+		}
+		return Arrays.stream(values)
+				.limit(MAX_TARGET_LIST_ENTRIES)
+				.filter(value -> value != null && !value.isBlank() && value.length() <= 128)
+				.toArray(String[]::new);
+	}
+
+	private static ModeFilter[] sanitizeModeFilters(ModeFilter[] filters) {
+		if (filters == null || filters.length == 0) {
+			return ModeFilter.defaultFilters();
+		}
+		EnumSet<ModeFilter> uniqueFilters = EnumSet.noneOf(ModeFilter.class);
+		for (ModeFilter filter : filters) {
+			if (filter != null) {
+				uniqueFilters.add(filter);
+			}
+		}
+		return uniqueFilters.isEmpty() ? ModeFilter.defaultFilters() : uniqueFilters.toArray(ModeFilter[]::new);
+	}
+
+	private static double clampFinite(double value, double min, double max, double defaultValue) {
+		return Double.isFinite(value) ? MathUtils.clamp(value, min, max) : defaultValue;
+	}
+
+	public static boolean isValidPlayerId(String playerId) {
+		if (playerId == null || playerId.isBlank() || playerId.length() > MAX_PLAYER_NAME_LENGTH
+				|| playerId.equals(".") || playerId.equals("..")) {
+			return false;
+		}
+		return playerId.codePoints().noneMatch(codePoint -> codePoint == '/' || codePoint == '\\'
+				|| Character.isISOControl(codePoint));
+	}
+
+	private static Path getPlayerDirectory(String playerpath, String playerid) {
+		if (!Config.isUsablePath(playerpath) || !isValidPlayerId(playerid)) {
+			return null;
+		}
+		try {
+			Path root = Paths.get(playerpath).toAbsolutePath().normalize();
+			Path directory = root.resolve(playerid).normalize();
+			return directory.getParent().equals(root) ? directory : null;
+		} catch (InvalidPathException e) {
+			return null;
+		}
 	}
 
 	public static void init(Config config) {
 		// TODO プレイヤーアカウント検証
 		try {
-			if(!Files.exists(Paths.get(config.getPlayerpath()))) {
-				Files.createDirectory(Paths.get(config.getPlayerpath()));
+			if (!Config.isUsablePath(config.getPlayerpath())) {
+				Logger.getGlobal().warning("Invalid player directory in system config");
+				return;
 			}
+			Files.createDirectories(Paths.get(config.getPlayerpath()));
 			if(readAllPlayerID(config.getPlayerpath()).length == 0 || readPlayerConfig(config.getPlayerpath(), config.getPlayername()) == null) {
 				PlayerConfig pc = new PlayerConfig();
 				create(config.getPlayerpath(), "player1");
@@ -931,11 +1164,15 @@ public final class PlayerConfig {
 
 	public static void create(String playerpath, String playerid) {
 		try {
-			Path p = Paths.get(playerpath + "/" + playerid);
+			Path p = getPlayerDirectory(playerpath, playerid);
+			if (p == null) {
+				Logger.getGlobal().warning("Refusing to create player with an invalid id");
+				return;
+			}
 			if(Files.exists(p)) {
 				return;
 			}
-			Files.createDirectory(p);
+			Files.createDirectories(p);
 			PlayerConfig player = new PlayerConfig();
 			player.setId(playerid);
 			write(playerpath, player);
@@ -948,7 +1185,7 @@ public final class PlayerConfig {
 		List<String> l = new ArrayList<>();
 		try (DirectoryStream<Path> paths = Files.newDirectoryStream(Paths.get(playerpath))) {
 			for (Path p : paths) {
-				if(Files.isDirectory(p)) {
+				if(Files.isDirectory(p) && isValidPlayerId(p.getFileName().toString())) {
 					l.add(p.getFileName().toString());
 				}
 			}
@@ -959,18 +1196,31 @@ public final class PlayerConfig {
 	}
 
 	public static PlayerConfig readPlayerConfig(String playerpath, String playerid) {
+		Path directory = getPlayerDirectory(playerpath, playerid);
+		if (directory == null) {
+			Logger.getGlobal().warning("Refusing to load player config with an invalid path or id");
+			return null;
+		}
 		PlayerConfig player = new PlayerConfig();
-		final Path path = Paths.get(playerpath + "/" + playerid + "/" + configpath);
-		final Path path_old = Paths.get(playerpath + "/" + playerid + "/" + configpath_old);
+		final Path path = directory.resolve(configpath);
+		final Path path_old = directory.resolve(configpath_old);
 		if (Files.exists(path)) {
-			try (Reader reader = new InputStreamReader(new FileInputStream(path.toFile()), StandardCharsets.UTF_8)) {
+			try {
+				if (!Files.isRegularFile(path) || Files.size(path) > MAX_PLAYER_CONFIG_FILE_SIZE) {
+					throw new SerializationException("file is not regular or exceeds " + MAX_PLAYER_CONFIG_FILE_SIZE + " bytes");
+				}
+				try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
 				Json json = new Json();
 				json.setIgnoreUnknownFields(true);
 				player = json.fromJson(PlayerConfig.class, reader);
+				if (player == null) {
+					throw new SerializationException("root value is null");
+				}
+				}
 			} catch (SerializationException e) {
 				Logger.getGlobal().warning("PlayerConfigの読み込み失敗 - Path : " + path.toString() + " , Log : " + e.getMessage());
 				try {
-					Files.copy(path, Paths.get(playerpath + "/" + playerid + "/config_backup.json"));
+					Files.copy(path, directory.resolve("config_backup.json"));
 				} catch (IOException e1) {
 //					e1.printStackTrace();
 				}
@@ -979,10 +1229,18 @@ public final class PlayerConfig {
 			}			
 		} else if(Files.exists(path_old)) {
 			// 旧コンフィグ読み込み。そのうち削除
-			try (FileReader reader = new FileReader(path_old.toFile())) {
+			try {
+				if (!Files.isRegularFile(path_old) || Files.size(path_old) > MAX_PLAYER_CONFIG_FILE_SIZE) {
+					throw new SerializationException("file is not regular or exceeds " + MAX_PLAYER_CONFIG_FILE_SIZE + " bytes");
+				}
+				try (Reader reader = Files.newBufferedReader(path_old, StandardCharsets.UTF_8)) {
 				Json json = new Json();
 				json.setIgnoreUnknownFields(true);
 				player = json.fromJson(PlayerConfig.class, reader);
+				if (player == null) {
+					throw new SerializationException("root value is null");
+				}
+				}
 			} catch(Throwable e) {
 				e.printStackTrace();
 			}
@@ -993,8 +1251,16 @@ public final class PlayerConfig {
 	}
 
 	public static void write(String playerpath, PlayerConfig player) {
-		try (Writer writer = new OutputStreamWriter(
-				new FileOutputStream(Paths.get(playerpath + "/" + player.getId() + "/" + configpath).toFile()), StandardCharsets.UTF_8)) {
+		if (player == null) {
+			return;
+		}
+		Path directory = getPlayerDirectory(playerpath, player.getId());
+		if (directory == null) {
+			Logger.getGlobal().warning("Refusing to write player config with an invalid path or id");
+			return;
+		}
+		player.validate();
+		try (Writer writer = Files.newBufferedWriter(directory.resolve(configpath), StandardCharsets.UTF_8)) {
 			Json json = new Json();
 			json.setOutputType(JsonWriter.OutputType.json);
 			json.setUsePrototypes(false);

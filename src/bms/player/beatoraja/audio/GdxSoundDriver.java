@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.logging.Logger;
 
 import bms.player.beatoraja.Config;
+import bms.player.beatoraja.song.SongResource;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.files.FileHandle;
@@ -44,6 +45,12 @@ public class GdxSoundDriver extends AbstractAudioDriver<Sound> {
 	@Override
 	protected Sound getKeySound(Path p) {
 		for(Path path : AudioDriver.getPaths(p.toString())) {
+			if (getTimeStretchRate() != 1f) {
+				PCM pcm = PCM.load(path.toString(), this);
+				if (pcm != null) {
+					return getKeySound(pcm);
+				}
+			}
 			final String filename = path.toString();
 			final String name = filename.substring(0, filename.lastIndexOf('.'));
 			final String ext = filename.substring(filename.lastIndexOf('.'));
@@ -55,17 +62,21 @@ public class GdxSoundDriver extends AbstractAudioDriver<Sound> {
 		return null;		
 	}
 
-	private Sound getKeySound(String name, String ext) {
-		switch (ext.toLowerCase(Locale.ROOT)) {
-			case ".wav":
-			case ".flac":
-				return getKeySound(new PCMHandleStream(name + ext));
-			case ".ogg":
-			case ".mp3":
-				return getKeySound(Gdx.files.internal(name + ext));
+	@Override
+	protected Sound getKeySound(SongResource resource) {
+		if (resource.localPath().isPresent()) {
+			return getKeySound(resource.localPath().get());
 		}
-		return null;
+		PCM pcm = PCM.load(resource, this);
+		return pcm != null ? getKeySound(pcm) : null;
+	}
 
+	private Sound getKeySound(String name, String ext) {
+		return switch (ext.toLowerCase(Locale.ROOT)) {
+			case ".wav", ".flac" -> getKeySound(new PCMHandleStream(name + ext));
+			case ".ogg", ".mp3" -> getKeySound(Gdx.files.internal(name + ext));
+			default -> null;
+		};
 	}
 
 	private Sound getKeySound(FileHandle handle) {
@@ -79,10 +90,23 @@ public class GdxSoundDriver extends AbstractAudioDriver<Sound> {
 
 	@Override
 	protected Sound getKeySound(final PCM pcm) {
+		final PCM source;
+		if (getTimeStretchRate() != 1f) {
+			PCM stretched = pcm;
+			try {
+				stretched = (PCM) TimeStretchProcessor.stretch(pcm, getTimeStretchRate());
+			} catch (Throwable e) {
+				Logger.getGlobal().warning("タイムストレッチ失敗: " + e.getMessage());
+			}
+			source = stretched;
+		} else {
+			source = pcm;
+		}
+
 		return Gdx.audio.newSound(new FileHandleStream("tempwav.wav") {
 			@Override
 			public InputStream read() {
-				return new WavFileInputStream(pcm);
+				return new WavFileInputStream(source);
 			}
 
 			@Override
@@ -100,10 +124,13 @@ public class GdxSoundDriver extends AbstractAudioDriver<Sound> {
 			mixer.put(pcm, channel, volume, getGlobalPitch() * pitch);
 		} else {
 			synchronized (lock) {
-				sounds[soundPos].sound = pcm;
-				sounds[soundPos].id = pcm.play(volume, getGlobalPitch() * pitch, 0);
-				sounds[soundPos].channel = channel;
-				soundPos = (soundPos + 1) % sounds.length;
+				long id = pcm.play(volume, getGlobalPitch() * pitch, 0);
+				if (id != -1) {
+					sounds[soundPos].sound = pcm;
+					sounds[soundPos].id = id;
+					sounds[soundPos].channel = channel;
+					soundPos = (soundPos + 1) % sounds.length;
+				}
 			}
 		}
 	}
@@ -140,7 +167,8 @@ public class GdxSoundDriver extends AbstractAudioDriver<Sound> {
 			mixer.stop(id, 0);
 		} else {
 			synchronized (lock) {
-				id.stop();			
+				id.stop();
+				clearSoundInstances(id);
 			}			
 		}
 	}
@@ -178,7 +206,18 @@ public class GdxSoundDriver extends AbstractAudioDriver<Sound> {
 
 	@Override
 	protected void disposeKeySound(Sound pcm) {
+		stop(pcm);
 		pcm.dispose();
+	}
+
+	private void clearSoundInstances(Sound sound) {
+		for (SoundInstance instance : sounds) {
+			if (instance.sound == sound) {
+				instance.sound = null;
+				instance.id = -1;
+				instance.channel = -1;
+			}
+		}
 	}
 
 	class SoundMixer extends Thread {
@@ -393,14 +432,19 @@ public class GdxSoundDriver extends AbstractAudioDriver<Sound> {
 				} else if(pcm instanceof ShortDirectPCM) {
 					result = ((ByteBuffer)pcm.sample).get(pos - 44 + pcm.start * 2) & 0xff;
 				} else if(pcm instanceof FloatPCM) {
-					short s = (short) (((float[])pcm.sample)[(pos - 44) / 2 + pcm.start] * Short.MAX_VALUE);					
+					short s = (short) (((float[])pcm.sample)[(pos - 44) / 2 + pcm.start] * Short.MAX_VALUE);
 					if (pos % 2 == 0) {
 						result = (s & 0x00ff);
 					} else {
 						result = ((s & 0xff00) >>> 8);
 					}
 				} else if(pcm instanceof BytePCM) {
-					result = pos % 2 != 0 ? (((byte[])pcm.sample)[(pos - 44) / 2 + pcm.start]) & 0x000000ff : 0;
+					short s = (short) (((byte[])pcm.sample)[(pos - 44) / 2 + pcm.start] << 8);
+					if (pos % 2 == 0) {
+						result = (s & 0x00ff);
+					} else {
+						result = ((s & 0xff00) >>> 8);
+					}
 				}
 				pos++;
 			}

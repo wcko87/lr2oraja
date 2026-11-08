@@ -13,7 +13,13 @@ import com.badlogic.gdx.math.MathUtils;
  *
  * @author exch
  */
-public class PlayModeConfig {
+public final class PlayModeConfig {
+    public static final int INPUT_DURATION_MIN = 0;
+    public static final int INPUT_DURATION_MAX = 100;
+    public static final int MOUSE_SCRATCH_DISTANCE_MIN = 1;
+    public static final int MOUSE_SCRATCH_DISTANCE_MAX = 10000;
+    public static final int MOUSE_SCRATCH_TIME_THRESHOLD_MIN = 1;
+    public static final int MOUSE_SCRATCH_TIME_THRESHOLD_MAX = 10000;
 
     private PlayConfig playconfig = new PlayConfig();
     /**
@@ -79,31 +85,58 @@ public class PlayModeConfig {
 		this.version = version;
 	}
 	
-    public void validate(int keys) {
+    public void validate(Mode mode) {
+        int keys = keyCount(mode);
         if(playconfig == null) {
             playconfig = new PlayConfig();
         }
 
         playconfig.validate();
 
+        if (keyboard == null) {
+            keyboard = new KeyboardConfig(mode, !isMidiMode(mode));
+        }
+        if (keyboard.mouseScratchConfig == null) {
+            keyboard.mouseScratchConfig = new MouseScratchConfig(mode);
+        }
+        if (controller == null || controller.length != mode.player) {
+            ControllerConfig[] repaired = new ControllerConfig[mode.player];
+            if (controller != null) {
+                System.arraycopy(controller, 0, repaired, 0, Math.min(controller.length, repaired.length));
+            }
+            controller = repaired;
+        }
+        for (int i = 0; i < controller.length; i++) {
+            if (controller[i] == null) {
+                controller[i] = new ControllerConfig(mode, i, false);
+            }
+        }
+        if (midi == null) {
+            midi = new MidiConfig(mode, isMidiMode(mode));
+        }
+
         if (keyboard.keys == null) {
-            keyboard.keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
-                    Keys.CONTROL_LEFT };
+            keyboard.setKeyAssign(mode, !isMidiMode(mode));
         }
         if (keyboard.keys.length != keys) {
             keyboard.keys = Arrays.copyOf(keyboard.keys, keys);
         }
-        keyboard.duration = MathUtils.clamp(keyboard.duration, 0, 100);
+        keyboard.duration = MathUtils.clamp(keyboard.duration, INPUT_DURATION_MIN, INPUT_DURATION_MAX);
 
         MouseScratchConfig mousescratch = keyboard.mouseScratchConfig;
         if (mousescratch.keys == null || mousescratch.keys.length != keys) {
             mousescratch.keys = new int[keys];
             Arrays.fill(mousescratch.keys, -1);
         }
-        mousescratch.mouseScratchDistance = MathUtils.clamp(mousescratch.mouseScratchDistance, 1, 10000);
-        mousescratch.mouseScratchTimeThreshold = MathUtils.clamp(mousescratch.mouseScratchTimeThreshold, 1, 10000);
+        mousescratch.mouseScratchDistance = MathUtils.clamp(mousescratch.mouseScratchDistance, MOUSE_SCRATCH_DISTANCE_MIN, MOUSE_SCRATCH_DISTANCE_MAX);
+        mousescratch.mouseScratchTimeThreshold = MathUtils.clamp(mousescratch.mouseScratchTimeThreshold, MOUSE_SCRATCH_TIME_THRESHOLD_MIN, MOUSE_SCRATCH_TIME_THRESHOLD_MAX);
+        mousescratch.mouseScratchMode = MathUtils.clamp(mousescratch.mouseScratchMode, 0, 1);
+        mousescratch.start = sanitizeMouseScratchKey(mousescratch.start);
+        mousescratch.select = sanitizeMouseScratchKey(mousescratch.select);
+        for (int i = 0; i < mousescratch.keys.length; i++) {
+            mousescratch.keys[i] = sanitizeMouseScratchKey(mousescratch.keys[i]);
+        }
 
-        int index = 0;
         for (ControllerConfig c : controller) {
             if (c.keys == null) {
                 c.keys = new int[] { BMKeys.BUTTON_4, BMKeys.BUTTON_7, BMKeys.BUTTON_3, BMKeys.BUTTON_8,
@@ -112,12 +145,15 @@ public class PlayModeConfig {
             if (c.keys.length != keys) {
                 int[] newkeys = new int[keys];
                 Arrays.fill(newkeys, -1);
-                for (int i = 0; i < c.keys.length && index < newkeys.length; i++, index++) {
-                    newkeys[index] = c.keys[i];
+                for (int i = 0; i < c.keys.length && i < newkeys.length; i++) {
+                    newkeys[i] = c.keys[i];
                 }
                 c.keys = newkeys;
             }
-            c.duration = MathUtils.clamp(c.duration, 0, 100);            
+            c.name = c.name != null ? c.name : "";
+            c.duration = MathUtils.clamp(c.duration, INPUT_DURATION_MIN, INPUT_DURATION_MAX);
+            c.analogScratchMode = MathUtils.clamp(c.analogScratchMode, 0, 1);
+            c.analogScratchThreshold = MathUtils.clamp(c.analogScratchThreshold, 1, 1000);
         }
         
 		// ボタsン数拡張(16->32)に伴う変換(0.8.1 -> 0.8.2)。あとで消す
@@ -133,7 +169,7 @@ public class PlayModeConfig {
 		}
 
         if (midi.keys == null) {
-            midi.keys = new MidiConfig().keys;
+            midi.setKeyAssign(mode, isMidiMode(mode));
         }
         if (midi.keys.length != keys) {
             midi.keys = Arrays.copyOf(midi.keys, keys);
@@ -147,10 +183,59 @@ public class PlayModeConfig {
         }
 
         for(int i = 0;i < midi.getKeys().length;i++) {
+            validateMidiInput(midi.getKeys()[i]);
             if(exclusive[i]) {
                 midi.getKeys()[i] = null;
             }
         }
+        validateMidiInput(midi.start);
+        validateMidiInput(midi.select);
+    }
+
+    /**
+     * Kept for callers compiled against the former API. New code should pass the mode so
+     * missing nested configuration can be rebuilt with the correct defaults.
+     */
+    public void validate(int keys) {
+        validate(switch (keys) {
+            case 7 -> Mode.BEAT_5K;
+            case 14 -> Mode.BEAT_10K;
+            case 18 -> Mode.BEAT_14K;
+            case 26 -> Mode.KEYBOARD_24K;
+            case 52 -> Mode.KEYBOARD_24K_DOUBLE;
+            default -> Mode.BEAT_7K;
+        });
+    }
+
+    private static int keyCount(Mode mode) {
+        return switch (mode) {
+            case BEAT_5K -> 7;
+            case BEAT_7K, POPN_5K, POPN_9K -> 9;
+            case BEAT_10K -> 14;
+            case BEAT_14K -> 18;
+            case KEYBOARD_24K -> 26;
+            case KEYBOARD_24K_DOUBLE -> 52;
+            default -> 9;
+        };
+    }
+
+    private static boolean isMidiMode(Mode mode) {
+        return mode == Mode.KEYBOARD_24K || mode == Mode.KEYBOARD_24K_DOUBLE;
+    }
+
+    private static int sanitizeMouseScratchKey(int key) {
+        return key >= -1 && key < 4 ? key : -1;
+    }
+
+    private static void validateMidiInput(MidiConfig.Input input) {
+        if (input == null) {
+            return;
+        }
+        input.type = input.type != null ? input.type : MidiConfig.Input.Type.NOTE;
+        input.value = switch (input.type) {
+            case NOTE, CONTROL_CHANGE -> MathUtils.clamp(input.value, 0, 127);
+            case PITCH_BEND -> Integer.compare(input.value, 0);
+        };
     }
 
     private void validate0(int[] keys, boolean[] exclusive) {
@@ -176,11 +261,11 @@ public class PlayModeConfig {
      *
      * @author exch
      */
-    public static class KeyboardConfig {
+    public static final class KeyboardConfig {
         /**
          * マウス皿設定
          */
-        private final MouseScratchConfig mouseScratchConfig;
+        private MouseScratchConfig mouseScratchConfig;
 
         private int[] keys;
 
@@ -216,42 +301,25 @@ public class PlayModeConfig {
         }
 
         public void setKeyAssign(Mode mode, boolean enable) {
-            switch (mode) {
-                case BEAT_5K:
-                    keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.SHIFT_LEFT,
-                            Keys.CONTROL_LEFT };
-                    break;
-                case BEAT_7K:
-                    keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
-                            Keys.CONTROL_LEFT };
-                    break;
-                case BEAT_10K:
-                    keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.SHIFT_LEFT,
+            keys = switch (mode) {
+                case BEAT_5K -> new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.SHIFT_LEFT, Keys.CONTROL_LEFT };
+                case BEAT_7K -> new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT, Keys.CONTROL_LEFT };
+                case BEAT_10K -> new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.SHIFT_LEFT,
                             Keys.CONTROL_LEFT, Keys.COMMA, Keys.L, Keys.PERIOD, Keys.SEMICOLON, Keys.SLASH, Keys.SHIFT_RIGHT, Keys.CONTROL_RIGHT };
-                    break;
-                case BEAT_14K:
-                default:
-                    keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
+                case BEAT_14K -> new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
                             Keys.CONTROL_LEFT, Keys.COMMA, Keys.L, Keys.PERIOD, Keys.SEMICOLON, Keys.SLASH, Keys.APOSTROPHE,
                             Keys.UNKNOWN, Keys.SHIFT_RIGHT, Keys.CONTROL_RIGHT };
-                    break;
-                case POPN_5K:
-                case POPN_9K:
-                    keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.G, Keys.B };
-                    break;
-                case KEYBOARD_24K:
-                    keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
+                case POPN_5K, POPN_9K -> new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.G, Keys.B };
+                case KEYBOARD_24K -> Arrays.copyOf(new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
+                            Keys.CONTROL_LEFT, Keys.COMMA, Keys.L, Keys.PERIOD, Keys.SEMICOLON, Keys.SLASH, Keys.APOSTROPHE,
+                            Keys.UNKNOWN, Keys.SHIFT_RIGHT, Keys.CONTROL_RIGHT }, 26);
+                case KEYBOARD_24K_DOUBLE -> Arrays.copyOf(new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
+                            Keys.CONTROL_LEFT, Keys.COMMA, Keys.L, Keys.PERIOD, Keys.SEMICOLON, Keys.SLASH, Keys.APOSTROPHE,
+                            Keys.UNKNOWN, Keys.SHIFT_RIGHT, Keys.CONTROL_RIGHT }, 52);
+                default -> new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
                             Keys.CONTROL_LEFT, Keys.COMMA, Keys.L, Keys.PERIOD, Keys.SEMICOLON, Keys.SLASH, Keys.APOSTROPHE,
                             Keys.UNKNOWN, Keys.SHIFT_RIGHT, Keys.CONTROL_RIGHT };
-                    keys = Arrays.copyOf(keys, 26);
-                    break;
-                case KEYBOARD_24K_DOUBLE:
-                    keys = new int[] { Keys.Z, Keys.S, Keys.X, Keys.D, Keys.C, Keys.F, Keys.V, Keys.SHIFT_LEFT,
-                            Keys.CONTROL_LEFT, Keys.COMMA, Keys.L, Keys.PERIOD, Keys.SEMICOLON, Keys.SLASH, Keys.APOSTROPHE,
-                            Keys.UNKNOWN, Keys.SHIFT_RIGHT, Keys.CONTROL_RIGHT };
-                    keys = Arrays.copyOf(keys, 52);
-                    break;
-            }
+            };
             if(!enable) {
                 Arrays.fill(keys, -1);
             }
@@ -283,7 +351,7 @@ public class PlayModeConfig {
     /**
      * マウス皿設定定義用クラス
      */
-    public static class MouseScratchConfig {
+    public static final class MouseScratchConfig {
         public static final int MOUSE_SCRATCH_VER_2 = 0;
         public static final int MOUSE_SCRATCH_VER_1 = 1;
 
@@ -327,31 +395,16 @@ public class PlayModeConfig {
 
 
         public void setKeyAssign(Mode mode) {
-            switch (mode) {
-                case BEAT_5K:
-                    keys = new int[7];
-                    break;
-                case BEAT_7K:
-                    keys = new int[9];
-                    break;
-                case BEAT_10K:
-                    keys = new int[14];
-                    break;
-                case BEAT_14K:
-                default:
-                    keys = new int[18];
-                    break;
-                case POPN_5K:
-                case POPN_9K:
-                    keys = new int[9];
-                    break;
-                case KEYBOARD_24K:
-                    keys = new int[26];
-                    break;
-                case KEYBOARD_24K_DOUBLE:
-                    keys = new int[52];
-                    break;
-            }
+            keys = new int[switch (mode) {
+            	case BEAT_5K -> 7;
+            	case BEAT_7K -> 9;
+            	case BEAT_10K -> 14;
+            	case BEAT_14K -> 18;
+            	case POPN_5K,POPN_9K -> 9;
+            	case KEYBOARD_24K -> 26;
+            	case KEYBOARD_24K_DOUBLE -> 52;
+            	default -> 18;
+            }];
             Arrays.fill(keys, -1);
             start = -1;
             select = -1;
@@ -434,7 +487,7 @@ public class PlayModeConfig {
      *
      * @author exch
      */
-    public static class ControllerConfig {
+    public static final class ControllerConfig {
 
         public static final int ANALOG_SCRATCH_VER_2 = 0;
         
@@ -513,55 +566,25 @@ public class PlayModeConfig {
         public void setKeyAssign(Mode mode, int player, boolean enable) {
         	final ControllerConfig con = IIDX_PS2;
             if(player == 0) {
-                switch (mode) {
-                    case BEAT_5K:
-                        keys = new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[7], con.keys[8]};
-                        break;
-                    case BEAT_7K:
-                    case POPN_5K:
-                    case POPN_9K:
-                    default:
-                        keys = new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]};
-                        break;
-                    case BEAT_10K:
-                        keys = new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[7], con.keys[8], -1,-1,-1,-1,-1,-1,-1 };
-                        break;
-                    case BEAT_14K:
-                        keys = new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]
-                        		, -1,-1,-1,-1,-1,-1,-1,-1,-1 };
-                        break;
-                    case KEYBOARD_24K:
-                        keys = Arrays.copyOf(con.keys, 26);
-                        break;
-                    case KEYBOARD_24K_DOUBLE:
-                        keys = Arrays.copyOf(con.keys, 52);
-                        break;
-                }
+                keys = switch (mode) {
+                	case BEAT_5K -> new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[7], con.keys[8]};
+                	case BEAT_7K, POPN_5K, POPN_9K -> new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]};
+                	case BEAT_10K -> new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[7], con.keys[8], -1,-1,-1,-1,-1,-1,-1 };
+                	case BEAT_14K -> new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]
+                    		, -1,-1,-1,-1,-1,-1,-1,-1,-1 };
+                	case KEYBOARD_24K -> Arrays.copyOf(con.keys, 26);
+                	case KEYBOARD_24K_DOUBLE -> Arrays.copyOf(con.keys, 52);
+                	default -> new int[]{ con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]};
+                };
             } else {
-                switch (mode) {
-                    case BEAT_5K:
-                    case BEAT_7K:
-                    case POPN_5K:
-                    case POPN_9K:
-                    default:
-                        keys = new int[9];
-                        Arrays.fill(keys, -1);
-                        break;
-                    case BEAT_10K:
-                        keys = new int[]{-1,-1,-1,-1,-1,-1,-1,con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[7], con.keys[8]};
-                        break;
-                    case BEAT_14K:
-                        keys = new int[]{-1,-1,-1,-1,-1,-1,-1,-1,-1,con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]};
-                        break;
-                    case KEYBOARD_24K:
-                        keys = new int[]{-1,-1,-1,-1,-1,-1,-1,-1,-1,con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]};
-                        keys = Arrays.copyOf(keys, 26);
-                        break;
-                    case KEYBOARD_24K_DOUBLE:
-                        keys = new int[]{-1,-1,-1,-1,-1,-1,-1,-1,-1,con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]};
-                        keys = Arrays.copyOf(keys, 52);
-                        break;
-                }
+            	keys = switch (mode) {
+                	case BEAT_5K,BEAT_7K,POPN_5K,POPN_9K -> new int[] {-1,-1,-1,-1,-1,-1,-1,-1,-1};
+                	case BEAT_10K -> new int[]{-1,-1,-1,-1,-1,-1,-1,con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[7], con.keys[8]};
+                	case BEAT_14K -> new int[]{-1,-1,-1,-1,-1,-1,-1,-1,-1,con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]};
+                	case KEYBOARD_24K -> Arrays.copyOf(new int[]{-1,-1,-1,-1,-1,-1,-1,-1,-1,con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]}, 26);
+                	case KEYBOARD_24K_DOUBLE -> keys = Arrays.copyOf(new int[]{-1,-1,-1,-1,-1,-1,-1,-1,-1,con.keys[0], con.keys[1], con.keys[2], con.keys[3], con.keys[4],con.keys[5], con.keys[6],con.keys[7], con.keys[8]}, 52);
+                	default -> new int[] {-1,-1,-1,-1,-1,-1,-1,-1,-1};
+                };
             }
             if(!enable) {
                 Arrays.fill(keys, -1);
@@ -626,9 +649,9 @@ public class PlayModeConfig {
         }
     }
 
-    public static class MidiConfig {
-
-        public static class Input {
+    public static final class MidiConfig {
+    	
+        public static final class Input {
             public enum Type {
                 NOTE, PITCH_BEND, CONTROL_CHANGE,
             }
@@ -637,13 +660,11 @@ public class PlayModeConfig {
             public int value;
 
             public Input() {
-                this.type = Type.NOTE;
-                this.value = 0;
+            	this(Type.NOTE, 0);
             }
 
             public Input(Input input) {
-                this.type = input.type;
-                this.value = input.value;
+            	this(input.type, input.value);
             }
 
             public Input(Type type, int value) {
@@ -652,16 +673,12 @@ public class PlayModeConfig {
             }
 
             public String toString() {
-                switch (type) {
-                    case NOTE:
-                        return "NOTE " + value;
-                    case PITCH_BEND:
-                        return "PITCH " + (value > 0 ? "+" : "-");
-                    case CONTROL_CHANGE:
-                        return "CC " + value;
-                    default:
-                        return null;
-                }
+                return switch (type != null ? type : Type.NOTE) {
+                	case NOTE -> "NOTE " + value;
+                	case PITCH_BEND -> "PITCH " + (value > 0 ? "+" : "-");
+                	case CONTROL_CHANGE -> "CC " + value;
+                	default -> null;
+                };
             }
         }
 
@@ -707,7 +724,7 @@ public class PlayModeConfig {
 
         public void setKeyAssign(Mode mode, boolean enable) {
             switch (mode) {
-                case BEAT_5K:
+                case BEAT_5K -> {
                     // 5keys
                     keys = new Input[7];
                     for (int i = 0; i < 5; i++) {
@@ -717,9 +734,8 @@ public class PlayModeConfig {
                     keys[6] = new Input(Input.Type.NOTE, 51);
                     start = new Input(Input.Type.NOTE, 47);
                     select = new Input(Input.Type.NOTE, 48);
-                    break;
-                case BEAT_7K:
-                default:
+                }
+                case BEAT_7K -> {
                     // 7keys
                     keys = new Input[9];
                     for (int i = 0; i < 7; i++) {
@@ -729,8 +745,8 @@ public class PlayModeConfig {
                     keys[8] = new Input(Input.Type.NOTE, 51);
                     start = new Input(Input.Type.NOTE, 47);
                     select = new Input(Input.Type.NOTE, 48);
-                    break;
-                case BEAT_10K:
+                }
+                case BEAT_10K -> {
                     keys = new Input[14];
                     for (int i = 0; i < 5; i++) {
                         // 1P keys
@@ -746,8 +762,8 @@ public class PlayModeConfig {
                     keys[13] = new Input(Input.Type.NOTE, 75);
                     start = new Input(Input.Type.NOTE, 47);
                     select = new Input(Input.Type.NOTE, 48);
-                    break;
-                case BEAT_14K:
+                }
+                case BEAT_14K -> {
                     keys = new Input[18];
                     for (int i = 0; i < 7; i++) {
                         // 1P keys
@@ -763,17 +779,16 @@ public class PlayModeConfig {
                     keys[17] = new Input(Input.Type.NOTE, 75);
                     start = new Input(Input.Type.NOTE, 47);
                     select = new Input(Input.Type.NOTE, 48);
-                    break;
-                case POPN_5K:
-                case POPN_9K:
+                }
+                case POPN_5K, POPN_9K -> {
                     keys = new Input[9];
                     for (int i = 0; i < 9; i++) {
                         keys[i] = new Input(Input.Type.NOTE, 52 + i);
                     }
                     start = new Input(Input.Type.NOTE, 47);
                     select = new Input(Input.Type.NOTE, 48);
-                    break;
-                case KEYBOARD_24K:
+                }
+                case KEYBOARD_24K -> {
                     keys = new Input[26];
                     for (int i = 0; i < 24; i++) {
                         keys[i] = new Input(Input.Type.NOTE, 48 + i);
@@ -782,8 +797,8 @@ public class PlayModeConfig {
                     keys[25] = new Input(Input.Type.PITCH_BEND, -1);
                     start = new Input(Input.Type.NOTE, 44);
                     select = new Input(Input.Type.NOTE, 46);
-                    break;
-                case KEYBOARD_24K_DOUBLE:
+                }
+                case KEYBOARD_24K_DOUBLE -> {
                     keys = new Input[52];
                     for (int i = 0; i < 24; i++) {
                         keys[i] = new Input(Input.Type.NOTE, 48 + i);
@@ -795,7 +810,7 @@ public class PlayModeConfig {
                     keys[51] = new Input(Input.Type.NOTE, 97);
                     start = new Input(Input.Type.NOTE, 44);
                     select = new Input(Input.Type.NOTE, 46);
-                    break;
+                }
             }
             if(!enable) {
                 Arrays.fill(keys, null);

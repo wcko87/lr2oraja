@@ -24,6 +24,7 @@ import bms.player.beatoraja.config.KeyConfiguration;
 import bms.player.beatoraja.config.SkinConfiguration;
 import bms.player.beatoraja.decide.MusicDecide;
 import bms.player.beatoraja.external.*;
+import bms.player.beatoraja.external.discord.DiscordListener;
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
 import bms.player.beatoraja.input.KeyCommand;
 import bms.player.beatoraja.ir.*;
@@ -36,6 +37,7 @@ import bms.player.beatoraja.select.bar.TableBar;
 import bms.player.beatoraja.skin.SkinLoader;
 import bms.player.beatoraja.skin.SkinObject.SkinOffset;
 import bms.player.beatoraja.skin.SkinProperty;
+import bms.player.beatoraja.skin.property.StringPropertyFactory;
 import bms.player.beatoraja.song.*;
 import bms.player.beatoraja.stream.StreamController;
 import bms.tool.mdprocessor.MusicDownloadProcessor;
@@ -45,9 +47,9 @@ import bms.tool.mdprocessor.MusicDownloadProcessor;
  *
  * @author exch
  */
-public class MainController {
+public final class MainController {
 
-	private static final String VERSION = "beatoraja 0.8.8";
+	private static final String VERSION = "beatoraja 0.8.9";
 
 	public static final boolean debug = false;
 	public static final int debugTextXpos = 10;
@@ -83,6 +85,8 @@ public class MainController {
 	private BMSPlayerMode auto;
 	private boolean songUpdated;
 
+	private final SongDatabaseAccessor songdb;
+
 	private SongInformationAccessor infodb;
 
 	private IRStatus[] ir;
@@ -115,18 +119,19 @@ public class MainController {
 	
 	private StreamController streamController;
 
+	private final MemoryDiagnostics memoryDiagnostics = new MemoryDiagnostics();
+
 	public static final int offsetCount = SkinProperty.OFFSET_MAX + 1;
 	private final SkinOffset[] offset = new SkinOffset[offsetCount];
 
-	protected TextureRegion black;
-	protected TextureRegion white;
-
 	private final Array<MainStateListener> stateListener = new Array<MainStateListener>();
 
-	public MainController(Path f, Config config, PlayerConfig player, BMSPlayerMode auto, boolean songUpdated) {
+	public MainController(Path f, Config config, PlayerConfig player, BMSPlayerMode auto, boolean songUpdated,
+			SongDatabaseAccessor songdb) {
 		this.auto = auto;
 		this.config = config;
 		this.songUpdated = songUpdated;
+		this.songdb = songdb;
 
 		for(int i = 0;i < offset.length;i++) {
 			offset[i] = new SkinOffset();
@@ -182,12 +187,13 @@ public class MainController {
 
 		switch(config.getAudioConfig().getDriver()) {
 		case PortAudio:
-			try {
-				audio = new PortAudioDriver(config);
-			} catch(Throwable e) {
-				e.printStackTrace();
-				config.getAudioConfig().setDriver(DriverType.OpenAL);
-			}
+				try {
+					audio = new PortAudioDriver(config);
+				} catch(Throwable e) {
+					e.printStackTrace();
+					Logger.getGlobal().severe("PortAudioの初期化に失敗しました : " + PortAudioDriver.getUnavailableMessage(e));
+					config.getAudioConfig().setDriver(DriverType.OpenAL);
+				}
 			break;
 		}
 
@@ -204,7 +210,7 @@ public class MainController {
 	}
 
 	public SongDatabaseAccessor getSongDatabase() {
-		return MainLoader.getScoreDatabaseAccessor();
+		return songdb;
 	}
 
 	public SongInformationAccessor getInfoDatabase() {
@@ -240,38 +246,26 @@ public class MainController {
 	}
 
 	public void changeState(MainStateType state) {
-		MainState newState = null;
-		switch (state) {
-		case MUSICSELECT:
-			if (this.bmsfile != null) {
-				exit();
-			} else {
-				newState = selector;
+		final MainState newState = switch (state) {
+			case MUSICSELECT -> {
+				if (this.bmsfile != null) {
+					exit();
+				}
+				yield selector;
 			}
-			break;
-		case DECIDE:
-			newState = decide;
-			break;
-		case PLAY:
-			if (bmsplayer != null) {
-				bmsplayer.dispose();
+			case DECIDE -> decide;
+			case PLAY -> {
+				if (bmsplayer != null) {
+					bmsplayer.dispose();
+				}
+				bmsplayer = new BMSPlayer(this, resource);
+				yield bmsplayer;
 			}
-			bmsplayer = new BMSPlayer(this, resource);
-			newState = bmsplayer;
-			break;
-		case RESULT:
-			newState = result;
-			break;
-		case COURSERESULT:
-			newState = gresult;
-			break;
-		case CONFIG:
-			newState = keyconfig;
-			break;
-		case SKINCONFIG:
-			newState = skinconfig;
-			break;
-		}
+			case RESULT -> result;
+			case COURSERESULT  -> gresult;
+			case CONFIG -> keyconfig;
+			case SKINCONFIG -> skinconfig;
+		};
 
 		if (newState != null && current != newState) {
 			if(current != null) {
@@ -285,6 +279,7 @@ public class MainController {
 			current = newState;
 			timer.setMainState(newState);
 			current.prepare();
+			memoryDiagnostics.capture(this, current.type.name());
 			updateMainStateListener(0);
 		}
 		if (current.getStage() != null) {
@@ -324,9 +319,12 @@ public class MainController {
 		case OpenAL:
 			audio = new GdxSoundDriver(config);
 			break;
-//		case AudioDevice:
-//			audio = new GdxAudioDeviceDriver(config);
-//			break;
+		case AudioDevice:
+			audio = new GdxAudioDeviceDriver(config);
+			break;
+		case PortAudio:
+			// Already initialized before the backend starts, so OpenAL fallback remains possible.
+			break;
 		}
 
 		resource = new PlayerResource(audio, config, player);
@@ -376,14 +374,6 @@ public class MainController {
 			targetlist.add("RIVAL_" + (i + 1));
 		}
 		TargetProperty.setTargets(targetlist.toArray(String.class), this);
-
-		Pixmap plainPixmap = new Pixmap(2,1, Pixmap.Format.RGBA8888);
-		plainPixmap.drawPixel(0,0, Color.toIntBits(255,0,0,0));
-		plainPixmap.drawPixel(1,0, Color.toIntBits(255,255,255,255));
-		Texture plainTexture = new Texture(plainPixmap);
-		black = new TextureRegion(plainTexture,0,0,1,1);
-		white = new TextureRegion(plainTexture,1,0,1,1);
-		plainPixmap.dispose();
 
 		Gdx.gl.glClearColor(0, 0, 0, 1);
 
@@ -455,7 +445,7 @@ public class MainController {
 				systemfont.draw(sprite, message.append("Stagefile Pixmap Resource Size ").append(selector.getStagefileResource().size()), debugTextXpos,
 						config.getResolution().height - 146);
 				message.setLength(0);
-				systemfont.draw(sprite, message.append("Banner Pixmap Resource Size ").append(selector.getBannerResource().size()), debugTextXpos,
+				systemfont.draw(sprite, message.append("Sort ID ").append(StringPropertyFactory.getStringProperty(61).get(current)), debugTextXpos,
 						config.getResolution().height - 170);
 						if (current.getSkin() != null) {
 					message.setLength(0);
@@ -599,38 +589,21 @@ public class MainController {
 
 	public void dispose() {
 		saveConfig();
+		rivals.close();
 
-		if (bmsplayer != null) {
-			bmsplayer.dispose();
-		}
-		if (selector != null) {
-			selector.dispose();
-		}
-		if (streamController != null) {
-		    streamController.dispose();
-        }
-		if (decide != null) {
-			decide.dispose();
-		}
-		if (result != null) {
-			result.dispose();
-		}
-		if (gresult != null) {
-			gresult.dispose();
-		}
-		if (keyconfig != null) {
-			keyconfig.dispose();
-		}
-		if (skinconfig != null) {
-			skinconfig.dispose();
-		}
+		Optional.ofNullable(bmsplayer).ifPresent(MainState::dispose);
+		Optional.ofNullable(selector).ifPresent(MainState::dispose);
+		Optional.ofNullable(streamController).ifPresent(StreamController::dispose);
+		Optional.ofNullable(decide).ifPresent(MainState::dispose);
+		Optional.ofNullable(result).ifPresent(MainState::dispose);
+		Optional.ofNullable(gresult).ifPresent(MainState::dispose);
+		Optional.ofNullable(keyconfig).ifPresent(MainState::dispose);
+		Optional.ofNullable(skinconfig).ifPresent(MainState::dispose);
 		resource.dispose();
 //		input.dispose();
 		SkinLoader.getResource().dispose();
 		ShaderManager.dispose();
-		if (download != null) {
-			download.dispose();
-		}
+		Optional.ofNullable(download).ifPresent(MusicDownloadProcessor::dispose);
 
 		Logger.getGlobal().info("全リソース破棄完了");
 	}
@@ -675,6 +648,14 @@ public class MainController {
 
 	public MusicDownloadProcessor getMusicDownloadProcessor(){
 		return download;
+	}
+
+	public MusicSelector getMusicSelector() {
+		return selector;
+	}
+
+	public MemoryDiagnostics getMemoryDiagnostics() {
+		return memoryDiagnostics;
 	}
 
 	public MessageRenderer getMessageRenderer() {

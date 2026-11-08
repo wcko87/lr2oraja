@@ -5,6 +5,9 @@ import bms.player.beatoraja.skin.*;
 import bms.player.beatoraja.skin.Skin.SkinObjectRenderer;
 
 import java.util.Optional;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Disposable;
@@ -41,6 +44,8 @@ public final class SkinBar extends SkinObject {
      * 3以降で定義されてなければ0か1を用いる
      */
     private final SkinText[] text = new SkinText[BARTEXT_COUNT];
+    private static final int TEXT_LAYOUT_CACHE_SIZE = 64;
+    private final Map<SkinText, LinkedHashMap<String, SkinText.CachedTextLayout>> textLayoutCache = new IdentityHashMap<>();
 
     public static final int BARTEXT_NORMAL = 0;
     public static final int BARTEXT_NEW = 1;
@@ -88,6 +93,8 @@ public final class SkinBar extends SkinObject {
     public static final int BARLAMP_COUNT = 11;
     
     private BarRenderer render;
+    private float scaleX = 1f;
+    private float scaleY = 1f;
     /**
      * 描画不可スキンオブジェクト
      */
@@ -147,8 +154,44 @@ public final class SkinBar extends SkinObject {
 
     public void setText(int id, SkinText text) {
         if(id >= 0 && id < this.text.length) {
+            textLayoutCache.remove(this.text[id]);
             this.text[id] = text;
         }
+    }
+
+    public void drawText(SkinObjectRenderer sprite, int id, String value, float offsetX, float offsetY) {
+        SkinText skinText = getText(id);
+        if (skinText == null) {
+            return;
+        }
+
+        LinkedHashMap<String, SkinText.CachedTextLayout> cache = textLayoutCache.computeIfAbsent(skinText,
+                ignored -> new LinkedHashMap<>(TEXT_LAYOUT_CACHE_SIZE, 0.75f, true) {
+                    @Override
+                    protected boolean removeEldestEntry(Map.Entry<String, SkinText.CachedTextLayout> eldest) {
+                        return size() > TEXT_LAYOUT_CACHE_SIZE;
+                    }
+                });
+        SkinText.CachedTextLayout layout = cache.get(value);
+        if (layout == null || !skinText.isCachedTextLayoutValid(layout)) {
+            layout = skinText.createCachedTextLayout(value);
+            if (layout == null) {
+                cache.remove(value);
+                skinText.setText(value);
+                skinText.draw(sprite, offsetX, offsetY);
+                return;
+            }
+            cache.put(value, layout);
+        }
+        if (!skinText.drawCachedTextLayout(sprite, layout, offsetX, offsetY)) {
+            cache.remove(value);
+            skinText.setText(value);
+            skinText.draw(sprite, offsetX, offsetY);
+        }
+    }
+
+    public void clearTextLayoutCache() {
+        textLayoutCache.clear();
     }
 
     public void setRivalLamp(int id, SkinImage rivallamp) {
@@ -203,6 +246,7 @@ public final class SkinBar extends SkinObject {
     	for(int i = 0;i < text.length;i++) {
     		if(text[i] != null && !text[i].validate()) {
     			removes.add(text[i]);
+			textLayoutCache.remove(text[i]);
     			text[i] = null;
     		}
     	}
@@ -278,6 +322,7 @@ public final class SkinBar extends SkinObject {
 
     @Override
     public void dispose() {
+		clearTextLayoutCache();
     	disposeAll(removes.toArray(SkinObject.class));
     	disposeAll(barimageon);
     	disposeAll(barimageoff);
@@ -298,7 +343,21 @@ public final class SkinBar extends SkinObject {
 
     public void setBarlevel(int id, SkinNumber barlevel) {
         if(id >= 0 && id < this.barlevel.length) {
+            if(barlevel != null) {
+                barlevel.setSkinScale(scaleX, scaleY);
+            }
             this.barlevel[id] = barlevel;
+        }
+    }
+
+    @Override
+    public void setSkinScale(float scaleX, float scaleY) {
+        this.scaleX = scaleX;
+        this.scaleY = scaleY;
+        for(SkinNumber barlevel : this.barlevel) {
+            if(barlevel != null) {
+                barlevel.setSkinScale(scaleX, scaleY);
+            }
         }
     }
 

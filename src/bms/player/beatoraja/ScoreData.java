@@ -15,7 +15,7 @@ import java.util.zip.GZIPOutputStream;
  *
  * @author exch
  */
-public class ScoreData implements Validatable {
+public final class ScoreData implements Validatable {
 
 	// TODO 各OPでのクリア、各DPオプションでのクリア、増加型/減少型プレイゲージでの最大クリア
 
@@ -23,6 +23,8 @@ public class ScoreData implements Validatable {
 	 * 譜面のハッシュ値
 	 */
 	private String sha256 = "";
+	
+	private String id = "";
 	/**
 	 * プレイヤー名。自身のスコアの場合は空白
 	 */
@@ -36,6 +38,8 @@ public class ScoreData implements Validatable {
 	 * スコア最終取得日時(unixtime, 秒単位)
 	 */
 	private long date = 0;	
+	/** Real performance duration in milliseconds, excluding ending margin/animations; -1 if unknown. */
+	private long playtime = -1;
 	/**
 	 * 総プレイ回数
 	 */
@@ -143,21 +147,41 @@ public class ScoreData implements Validatable {
 	public long getDate() {
 		return date;
 	}
+	
 	public void setDate(long date) {
 		this.date = date;
 	}
+
+	public long getPlaytime() {
+		return playtime;
+	}
+
+	public void setPlaytime(long playtime) {
+		this.playtime = Math.max(-1, playtime);
+	}
+
+	/** Adds one course stage; an unknown duration makes the aggregate unknown. */
+	public void addPlaytime(long stagePlaytime) {
+		playtime = playtime < 0 || stagePlaytime < 0 || Long.MAX_VALUE - playtime < stagePlaytime
+				? -1 : playtime + stagePlaytime;
+	}
+	
 	public int getPlaycount() {
 		return playcount;
 	}
+	
 	public void setPlaycount(int playcount) {
 		this.playcount = playcount;
 	}
+	
 	public int getClear() {
 		return clear;
 	}
+	
 	public void setClear(int clear) {
 		this.clear = clear;
 	}
+	
 	public int getEpg() {
 		return epg;
 	}
@@ -245,67 +269,61 @@ public class ScoreData implements Validatable {
 	 * @return 判定のカウント数
 	 */
 	public int getJudgeCount(int judge, boolean fast) {
-		switch (judge) {
-			case 0:
-				return fast ? epg : lpg;
-			case 1:
-				return fast ? egr : lgr;
-			case 2:
-				return fast ? egd : lgd;
-			case 3:
-				return fast ? ebd : lbd;
-			case 4:
-				return fast ? epr : lpr;
-			case 5:
-				return fast ? ems : lms;
-		}
-		return 0;
+		return switch (judge) {
+			case 0 -> fast ? epg : lpg;
+			case 1 -> fast ? egr : lgr;
+			case 2 -> fast ? egd : lgd;
+			case 3 -> fast ? ebd : lbd;
+			case 4 -> fast ? epr : lpr;
+			case 5 -> fast ? ems : lms;
+			default -> 0;
+		};
 	}
 
 	public void addJudgeCount(int judge, boolean fast, int count) {
 		switch (judge) {
-		case 0:
-			if(fast) {
-				epg += count;
-			} else {
-				lpg += count;
+			case 0 -> {
+				if(fast) {
+					epg += count;
+				} else {
+					lpg += count;
+				}
 			}
-			break;
-		case 1:
-			if(fast) {
-				egr += count;
-			} else {
-				lgr += count;
+			case 1 -> {
+				if(fast) {
+					egr += count;
+				} else {
+					lgr += count;
+				}
 			}
-			break;
-		case 2:
-			if(fast) {
-				egd += count;
-			} else {
-				lgd += count;
+			case 2 -> {
+				if(fast) {
+					egd += count;
+				} else {
+					lgd += count;
+				}
 			}
-			break;
-		case 3:
-			if(fast) {
-				ebd += count;
-			} else {
-				lbd += count;
+			case 3 -> {
+				if(fast) {
+					ebd += count;
+				} else {
+					lbd += count;
+				}
 			}
-			break;
-		case 4:
-			if(fast) {
-				epr += count;
-			} else {
-				lpr += count;
+			case 4 -> {
+				if(fast) {
+					epr += count;
+				} else {
+					lpr += count;
+				}
 			}
-			break;
-		case 5:
-			if(fast) {
-				ems += count;
-			} else {
-				lms += count;
+			case 5 -> {
+				if(fast) {
+					ems += count;
+				} else {
+					lms += count;
+				}
 			}
-			break;
 		}
 	}
 
@@ -384,6 +402,14 @@ public class ScoreData implements Validatable {
 		this.sha256 = sha256;
 	}
 	
+	public String getID() {
+		return id;
+	}
+
+	public void setID(String id) {
+		this.id = id != null ? id : "";
+	}
+
 	public String getPlayer() {
 		return player;
 	}
@@ -577,7 +603,7 @@ public class ScoreData implements Validatable {
 
 	@Override
 	public boolean validate() {
-		return mode >= 0 && clear >= 0 && clear <= ClearType.Max.id &&
+		return playtime >= -1 && mode >= 0 && clear >= 0 && clear <= ClearType.Max.id &&
 				epg >= 0 && lpg >= 0 && egr >= 0 && lgr >= 0 && egd >= 0 && lgd >= 0 &&
 				ebd >= 0 && lbd >= 0 && epr >= 0 && lpr >= 0 && ems >= 0 && lms >= 0 &&
 				clearcount >= 0 && playcount >= clearcount && maxcombo >= 0 && notes > 0 && passnotes >= 0 && passnotes <= notes &&minbp >= 0 &&

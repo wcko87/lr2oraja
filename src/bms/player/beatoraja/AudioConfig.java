@@ -8,6 +8,10 @@ import com.badlogic.gdx.math.MathUtils;
  * @author exch
  */
 public class AudioConfig implements Validatable {
+	public static final int DEVICE_BUFFER_SIZE_MIN = 4;
+	public static final int DEVICE_BUFFER_SIZE_MAX = 4096;
+	public static final int DEVICE_SIMULTANEOUS_SOURCES_MIN = 16;
+	public static final int DEVICE_SIMULTANEOUS_SOURCES_MAX = 1024;
 
 	/**
 	 * オーディオドライバー
@@ -25,7 +29,7 @@ public class AudioConfig implements Validatable {
 	/**
 	 * オーディオ同時発音数
 	 */
-	private int deviceSimultaneousSources = 128;
+	private int deviceSimultaneousSources = 256;
 	/**
 	 * オーディオサンプリングレート(0:指定なし)
 	 */
@@ -163,18 +167,23 @@ public class AudioConfig implements Validatable {
 		if(driver == null) {
 			driver = DriverType.OpenAL;
 		}
-		deviceBufferSize = MathUtils.clamp(deviceBufferSize, 4, 4096);
-		deviceSimultaneousSources = MathUtils.clamp(deviceSimultaneousSources, 16, 1024);
+		deviceBufferSize = MathUtils.clamp(deviceBufferSize, DEVICE_BUFFER_SIZE_MIN, DEVICE_BUFFER_SIZE_MAX);
+		deviceSimultaneousSources = MathUtils.clamp(deviceSimultaneousSources, DEVICE_SIMULTANEOUS_SOURCES_MIN, DEVICE_SIMULTANEOUS_SOURCES_MAX);
+		sampleRate = sampleRate == 0 ? 0 : MathUtils.clamp(sampleRate, 8000, 384000);
 		if(freqOption == null) {
 			freqOption = FrequencyType.FREQUENCY;
 		}
 		if(fastForward == null) {
 			fastForward = FrequencyType.FREQUENCY;
 		}
-		systemvolume = MathUtils.clamp(systemvolume, 0f, 1f);
-		keyvolume = MathUtils.clamp(keyvolume, 0f, 1f);
-		bgvolume = MathUtils.clamp(bgvolume, 0f, 1f);
+		systemvolume = clampVolume(systemvolume);
+		keyvolume = clampVolume(keyvolume);
+		bgvolume = clampVolume(bgvolume);
 		return true;
+	}
+
+	private static float clampVolume(float value) {
+		return Float.isFinite(value) ? MathUtils.clamp(value, 0f, 1f) : 0.5f;
 	}
 	
 	public enum DriverType {
@@ -188,9 +197,9 @@ public class AudioConfig implements Validatable {
 		 */
 		PortAudio,
 		/**
-		 * AudioDevice (libGDX AudioDevice, 未実装)
+		 * AudioDevice (libGDX AudioDevice)
 		 */
-//		AudioDevice,
+		AudioDevice,
 	}
 	
 	public enum FrequencyType {
@@ -204,8 +213,8 @@ public class AudioConfig implements Validatable {
 		 */
 		FREQUENCY,
 		/**
-		 * オーディオ再生速度変化の処理:ピッチ変化なしに速度を変更(未実装)
+		 * オーディオ再生速度変化の処理:ピッチ変化なしに速度を変更(Practiceのみ)
 		 */
-//		SPEED
+		SPEED
 	}
 }

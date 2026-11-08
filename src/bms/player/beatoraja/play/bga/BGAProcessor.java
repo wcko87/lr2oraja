@@ -1,6 +1,7 @@
 package bms.player.beatoraja.play.bga;
 
-import java.nio.file.*;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.logging.Logger;
 
@@ -12,6 +13,11 @@ import bms.player.beatoraja.ResourcePool;
 import bms.player.beatoraja.play.BMSPlayer;
 import bms.player.beatoraja.play.SkinBGA;
 import bms.player.beatoraja.skin.Skin.SkinObjectRenderer;
+import bms.player.beatoraja.video.FFmpegProcessor;
+import bms.player.beatoraja.video.VideoFormat;
+import bms.player.beatoraja.video.VideoProcessor;
+import bms.player.beatoraja.song.SongResource;
+import bms.player.beatoraja.song.SongResources;
 
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.*;
@@ -24,18 +30,21 @@ import com.badlogic.gdx.utils.Array;
  *
  * @author exch
  */
-public class BGAProcessor {
+public final class BGAProcessor {
+	/** Point-in-time estimate for BGA image and movie resources. */
+	public record MemoryStatistics(BGImageProcessor.MemoryStatistics images, int movieCount,
+			long retainedMovieBytes, int movieResourceCount) {
+	}
 	
 	// TODO イベントレイヤー対応(現状はミスレイヤーのみ)
 
 	private PlayerConfig player;
 	private float progress = 0;
 
-	private MovieProcessor[] movies = new MovieProcessor[0]; 
+	private VideoProcessor[] movies = new VideoProcessor[0]; 
 	
-	private final ResourcePool<String, MovieProcessor> mpgresource;
-
-	public static final String[] mov_extension = { "mp4", "wmv", "m4v", "webm", "mpg", "mpeg", "m1v", "m2v", "avi"};
+	private final ResourcePool<String, VideoProcessor> mpgresource;
+	private final Config config;
 
 	/**
 	 * 再生中のBGAID
@@ -72,6 +81,7 @@ public class BGAProcessor {
 
 	public BGAProcessor(Config config, PlayerConfig player) {
 		this.player = player;
+		this.config = config;
 
 		Pixmap blank = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
 		blank.setColor(Color.BLACK);
@@ -79,16 +89,16 @@ public class BGAProcessor {
 		blanktex = new Texture(blank);
 		blank.dispose();
 
-		mpgresource = new ResourcePool<String, MovieProcessor>(Math.max(config.getSongResourceGen(), 1)) {
+		mpgresource = new ResourcePool<String, VideoProcessor>(Math.max(config.getSongResourceGen(), 1)) {
 			@Override
-			protected MovieProcessor load(String key) {
+			protected VideoProcessor load(String key) {
 				FFmpegProcessor mm = new FFmpegProcessor(config.getFrameskip());
 				mm.create(key);
 				return mm;
 			}
 
 			@Override
-			protected void dispose(MovieProcessor resource) {
+			protected void dispose(VideoProcessor resource) {
 				resource.dispose();
 			}
 		};
@@ -97,6 +107,11 @@ public class BGAProcessor {
 	}
 
 	public synchronized void setModel(BMSModel model) {
+		setModel(model, model != null ? SongResources.fromPath(Path.of(model.getPath())) : null);
+	}
+
+	/** Loads BGA files relative to the original song resource. */
+	public synchronized void setModel(BMSModel model, SongResource chartResource) {
 		progress = 0;
 
 		cache.clear();
@@ -114,27 +129,27 @@ public class BGAProcessor {
 			}
 
 			// BMS格納ディレクトリ
-			Path dpath = Paths.get(model.getPath()).getParent();
+			SongResource directory = chartResource.parent();
 
-			movies = new MovieProcessor[model.getBgaList().length];
+			movies = new VideoProcessor[model.getBgaList().length];
 			for (String name : model.getBgaList()) {
 				if (progress == 1) {
 					break;
 				}
-				Path f = null;
+				SongResource f = null;
 				try {
-					if (Files.exists(dpath.resolve(name))) {
+					if (directory.resolve(name).exists()) {
 						final int index = name.lastIndexOf('.');
 						String fex = null;
 						if (index != -1) {
 							fex = name.substring(index + 1).toLowerCase();
 						}
 						if (fex != null) {
-							if (Arrays.asList(mov_extension).contains(fex)){
+							if (Arrays.asList(VideoFormat.getAllExtensions()).contains(fex)){
 								name = name.substring(0, index);
-								for (String mov : mov_extension) {
-									final Path mpgfile = dpath.resolve(name + "." + mov);
-									if (Files.exists(mpgfile)) {
+								for (String mov : VideoFormat.getAllExtensions()) {
+									final SongResource mpgfile = directory.resolve(name + "." + mov);
+									if (mpgfile.exists()) {
 										f = mpgfile;
 										break;
 									}
@@ -142,14 +157,14 @@ public class BGAProcessor {
 							}else if (Arrays.asList(BGImageProcessor.pic_extension).contains(fex)){
 								name = name.substring(0, index);
 								for (String pic : BGImageProcessor.pic_extension) {
-									final Path picfile = dpath.resolve(name + "." + pic);
-									if (Files.exists(picfile)) {
+									final SongResource picfile = directory.resolve(name + "." + pic);
+									if (picfile.exists()) {
 										f = picfile;
 										break;
 									}
 								}
 							}else{
-								f = dpath.resolve(name);
+								f = directory.resolve(name);
 							}
 						}
 					}
@@ -158,33 +173,38 @@ public class BGAProcessor {
 						if (index != -1) {
 							name = name.substring(0, index);
 						}
-						for (String mov : mov_extension) {
-							final Path mpgfile = dpath.resolve(name + "." + mov);
-							if (Files.exists(mpgfile)) {
+						for (String mov : VideoFormat.getAllExtensions()) {
+							final SongResource mpgfile = directory.resolve(name + "." + mov);
+							if (mpgfile.exists()) {
 								f = mpgfile;
 								break;
 							}
 						}
 						if (f == null) {
 							for (String mov : BGImageProcessor.pic_extension) {
-								final Path picfile = dpath.resolve(name + "." + mov);
-								if (Files.exists(picfile)) {
+								final SongResource picfile = directory.resolve(name + "." + mov);
+								if (picfile.exists()) {
 									f = picfile;
 									break;
 								}
 							}
 						}
 					}
-				} catch (InvalidPathException e) {
+				} catch (IOException | IllegalArgumentException e) {
 					Logger.getGlobal().warning(e.getMessage());
 				}
 
 				if (f != null) {
 					boolean isMovie = false;
-					for (String mov : mov_extension) {
-						if (f.getFileName().toString().toLowerCase().endsWith(mov)) {
+					for (String mov : VideoFormat.getAllExtensions()) {
+						if (f.name().toLowerCase().endsWith(mov)) {
 							try {
-								MovieProcessor mm = mpgresource.get(f.toString());
+								SongResource movieResource = f;
+								VideoProcessor mm = mpgresource.get(f.cacheKey(), () -> {
+									FFmpegProcessor processor = new FFmpegProcessor(config.getFrameskip());
+									processor.create(movieResource);
+									return processor;
+								});
 								movies[id] = mm;
 								isMovie = true;
 								break;
@@ -220,6 +240,13 @@ public class BGAProcessor {
 		cache.disposeOld();
 		Gdx.app.postRunnable(() -> mpgresource.disposeOld());
 	}
+
+	public MemoryStatistics getMemoryStatistics() {
+		ResourcePool.Statistics movies = mpgresource.getStatistics(video ->
+				video instanceof FFmpegProcessor processor ? processor.getRetainedMovieBytes() : 0);
+		return new MemoryStatistics(cache.getMemoryStatistics(), movies.resourceCount(), movies.estimatedBytes(),
+				0);
+	}
 	/**
 	 * BGAの初期データをあらかじめキャッシュする
 	 */
@@ -228,7 +255,7 @@ public class BGAProcessor {
 		if(cache != null) {
 			cache.prepare(timelines);			
 		}
-		for (MovieProcessor mp : movies) {
+		for (VideoProcessor mp : movies) {
 			if(mp != null) {
 				mp.stop();				
 			}
@@ -328,13 +355,8 @@ public class BGAProcessor {
 			final Texture playingbgatex = getBGAData(time, playingbgaid, rbga);
 			rbga = true;
 			if (playingbgatex != null) {
-				if (movies[playingbgaid] != null) {
-					sprite.setType(SkinObjectRenderer.TYPE_FFMPEG);
-					drawBGAFixRatio(dst, sprite, r, playingbgatex);
-				} else {
-					sprite.setType(SkinObjectRenderer.TYPE_LINEAR);
-					drawBGAFixRatio(dst, sprite, r, playingbgatex);
-				}
+				sprite.setType(movies[playingbgaid] != null ? SkinObjectRenderer.TYPE_FFMPEG : SkinObjectRenderer.TYPE_LINEAR);
+				drawBGAFixRatio(dst, sprite, r, playingbgatex);
 			} else {
 				sprite.draw(blanktex, r.x, r.y, r.width, r.height);
 			}
@@ -342,13 +364,8 @@ public class BGAProcessor {
 			final Texture playinglayertex = getBGAData(time, playinglayerid, rlayer);
 			rlayer = true;
 			if (playinglayertex != null) {
-				if (movies[playinglayerid] != null) {
-					sprite.setType(SkinObjectRenderer.TYPE_FFMPEG);
-					drawBGAFixRatio(dst, sprite, r, playinglayertex);
-				} else {
-					sprite.setType(SkinObjectRenderer.TYPE_LAYER);
-					drawBGAFixRatio(dst, sprite, r, playinglayertex);
-				}
+				sprite.setType(movies[playinglayerid] != null ? SkinObjectRenderer.TYPE_FFMPEG : SkinObjectRenderer.TYPE_LAYER);
+				drawBGAFixRatio(dst, sprite, r, playinglayertex);
 			}
 		}
 	}
@@ -376,7 +393,7 @@ public class BGAProcessor {
 	}
 
 	public void stop() {
-		for (MovieProcessor mpg : movies) {
+		for (VideoProcessor mpg : movies) {
 			if (mpg != null) {
 				mpg.stop();
 			}

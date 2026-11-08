@@ -9,10 +9,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.*;
 
-import bms.model.Mode;
 import bms.player.beatoraja.*;
 import bms.player.beatoraja.Config.SongPreview;
 import bms.player.beatoraja.ScoreDatabaseAccessor.ScoreDataCollector;
@@ -42,7 +40,8 @@ public final class MusicSelector extends MainState {
 	 */
 	private SongDatabaseAccessor songdb;
 
-	public static final Mode[] MODE = { null, Mode.BEAT_7K, Mode.BEAT_14K, Mode.POPN_9K, Mode.BEAT_5K, Mode.BEAT_10K, Mode.KEYBOARD_24K, Mode.KEYBOARD_24K_DOUBLE };
+	public static final ModeFilter[] MODE = ModeFilter.values();
+	public static final DifficultyFilter[] DIFFICULTY = DifficultyFilter.values();
 
 	/**
 	 * 保存可能な最大リプレイ数
@@ -64,8 +63,6 @@ public final class MusicSelector extends MainState {
 	private final BarManager manager = new BarManager(this);
 	
 	private MusicSelectInputProcessor musicinput;
-
-	private SearchTextField search;
 
 	/**
 	 * 楽曲が選択されてからbmsを読み込むまでの時間(ms)
@@ -106,7 +103,7 @@ public final class MusicSelector extends MainState {
 	private PixmapResourcePool stagefiles;
 
 	public MusicSelector(MainController main, boolean songUpdated) {
-		super(main);
+		super(main, MainStateType.MUSICSELECT);
 		this.config = main.getPlayerResource().getPlayerConfig();
 
 		songdb = main.getSongDatabase();
@@ -185,17 +182,6 @@ public final class MusicSelector extends MainState {
 		manager.updateBar();
 
 		loadSkin(SkinType.MUSIC_SELECT);
-
-		// search text field
-		Rectangle searchRegion = ((MusicSelectSkin) getSkin()).getSearchTextRegion();
-		if (searchRegion != null && (getStage() == null ||
-				(search != null && !searchRegion.equals(search.getSearchBounds())))) {
-			if(search != null) {
-				search.dispose();
-			}
-			search = new SearchTextField(this, resource.getConfig().getResolution());
-			setStage(search);
-		}
 	}
 
 	public void prepare() {
@@ -318,11 +304,20 @@ public final class MusicSelector extends MainState {
 
 	public void shutdown() {
 		preview.stop();
-		if (search != null) {
-			search.unfocus(this);
-		}
 		banners.disposeOld();
 		stagefiles.disposeOld();
+	}
+
+	public void search(String text) {
+		if (text == null || text.isBlank()) {
+			return;
+		}
+		SearchWordBar swb = new SearchWordBar(this, text);
+		if (swb.getChildren().length > 0) {
+			manager.addSearch(swb);
+			manager.updateBar(null);
+			manager.setSelected(swb);
+		}
 	}
 	
 	public void select(Bar current) {
@@ -382,49 +377,48 @@ public final class MusicSelector extends MainState {
 			ReplayData chartOption = null;
 			ReplayData replay;
 			switch(ChartReplicationMode.get(config.getChartReplicationMode())) {
-			case NONE:
-				// TODO 通常オプションもここに入れて渡す？
-				break;
-			case RIVALCHART:
-				if(rival != null) {
-					chartOption = new ReplayData();
-					chartOption.randomoption = rival.getOption() % 10;
-					chartOption.randomoption2 = (rival.getOption() / 10) % 10;
-					chartOption.doubleoption = rival.getOption() / 100;
-					chartOption.randomoptionseed = rival.getSeed() % (65536 * 256);
-					chartOption.randomoption2seed = rival.getSeed() / (65536 * 256);
-//					chartOption.rand = rival.getRandom();
+			// TODO 通常オプションもここに入れて渡す？
+				case NONE -> {}
+				case RIVALCHART -> {
+					if(rival != null) {
+						chartOption = new ReplayData();
+						chartOption.randomoption = rival.getOption() % 10;
+						chartOption.randomoption2 = (rival.getOption() / 10) % 10;
+						chartOption.doubleoption = rival.getOption() / 100;
+						chartOption.randomoptionseed = rival.getSeed() % (65536 * 256);
+						chartOption.randomoption2seed = rival.getSeed() / (65536 * 256);
+	//					chartOption.rand = rival.getRandom();
+					}
 				}
-				break;
-			case RIVALOPTION:
-				if(rival != null) {
-					chartOption = new ReplayData();
-					chartOption.randomoption = rival.getOption() % 10;
-					chartOption.randomoption2 = (rival.getOption() / 10) % 10;
-					chartOption.doubleoption = rival.getOption() / 100;
+				case RIVALOPTION -> {
+					if(rival != null) {
+						chartOption = new ReplayData();
+						chartOption.randomoption = rival.getOption() % 10;
+						chartOption.randomoption2 = (rival.getOption() / 10) % 10;
+						chartOption.doubleoption = rival.getOption() / 100;
+					}
 				}
-				break;							
-			case REPLAYCHART:
-				replay = main.getPlayDataAccessor().readReplayData(resource.getBMSModel(), config.getLnmode(), play.id);
-				if (replay != null) {
-					chartOption = new ReplayData();
-					chartOption.randomoption = replay.randomoption;
-					chartOption.randomoptionseed = replay.randomoptionseed;
-					chartOption.randomoption2 = replay.randomoption2;
-					chartOption.randomoption2seed = replay.randomoption2seed;
-					chartOption.doubleoption = replay.doubleoption;
-					chartOption.rand = replay.rand;
+				case REPLAYCHART -> {
+					replay = main.getPlayDataAccessor().readReplayData(resource.getBMSModel(), config.getLnmode(), play.id);
+					if (replay != null) {
+						chartOption = new ReplayData();
+						chartOption.randomoption = replay.randomoption;
+						chartOption.randomoptionseed = replay.randomoptionseed;
+						chartOption.randomoption2 = replay.randomoption2;
+						chartOption.randomoption2seed = replay.randomoption2seed;
+						chartOption.doubleoption = replay.doubleoption;
+						chartOption.rand = replay.rand;
+					}
 				}
-				break;
-			case REPLAYOPTION:
-				replay = main.getPlayDataAccessor().readReplayData(resource.getBMSModel(), config.getLnmode(), play.id);
-				if (replay != null) {
-					chartOption = new ReplayData();
-					chartOption.randomoption = replay.randomoption;
-					chartOption.randomoption2 = replay.randomoption2;
-					chartOption.doubleoption = replay.doubleoption;
+				case REPLAYOPTION -> {
+					replay = main.getPlayDataAccessor().readReplayData(resource.getBMSModel(), config.getLnmode(), play.id);
+					if (replay != null) {
+						chartOption = new ReplayData();
+						chartOption.randomoption = replay.randomoption;
+						chartOption.randomoption2 = replay.randomoption2;
+						chartOption.doubleoption = replay.doubleoption;
+					}
 				}
-				break;
 			}
 			resource.setChartOption(chartOption);
 			
@@ -481,12 +475,12 @@ public final class MusicSelector extends MainState {
 			if (mode.mode == BMSPlayerMode.Mode.PLAY || mode.mode == BMSPlayerMode.Mode.AUTOPLAY) {
 				for (CourseData.CourseDataConstraint constraint : gradeBar.getCourseData().getConstraint()) {
 					switch (constraint) {
-						case CLASS:
+						case CLASS -> {
 							config.setRandom(0);
 							config.setRandom2(0);
 							config.setDoubleoption(0);
-							break;
-						case MIRROR:
+						}
+						case MIRROR -> {
 							if (config.getRandom() == 1) {
 								config.setRandom2(1);
 								config.setDoubleoption(1);
@@ -495,26 +489,19 @@ public final class MusicSelector extends MainState {
 								config.setRandom2(0);
 								config.setDoubleoption(0);
 							}
-							break;
-						case RANDOM:
+						}
+						case RANDOM -> {
 							if (config.getRandom() > 5) {
 								config.setRandom(0);
 							}
 							if (config.getRandom2() > 5) {
 								config.setRandom2(0);
 							}
-							break;
-						case LN:
-							config.setLnmode(0);
-							break;
-						case CN:
-							config.setLnmode(1);
-							break;
-						case HCN:
-							config.setLnmode(2);
-							break;
-						default:
-							break;
+						}
+						case LN -> config.setLnmode(0);
+						case CN -> config.setLnmode(1);
+						case HCN -> config.setLnmode(2);
+						default -> {}
 					}
 				}
 			}
@@ -557,10 +544,6 @@ public final class MusicSelector extends MainState {
 		bar.dispose();
 		banners.dispose();
 		stagefiles.dispose();
-		if (search != null) {
-			search.dispose();
-			search = null;
-		}
 	}
 
 	public int getPanelState() {
@@ -667,11 +650,9 @@ public final class MusicSelector extends MainState {
 	public PlayConfig getSelectedBarPlayConfig() {
 		Bar current = manager.getSelected();
 		PlayConfig pc = null;
-		if (current instanceof SongBar && ((SongBar)current).existsSong()) {
-			SongBar song = (SongBar) current;
+		if (current instanceof SongBar song && song.existsSong()) {
 			pc = main.getPlayerConfig().getPlayConfig(song.getSongData().getMode()).getPlayconfig();
-		} else if(current instanceof GradeBar && ((GradeBar)current).existsAllSongs()) {
-			GradeBar grade = (GradeBar)current;
+		} else if(current instanceof GradeBar grade && grade.existsAllSongs()) {
 			for(SongData song : grade.getSongDatas()) {
 				PlayConfig pc2 = main.getPlayerConfig().getPlayConfig(song.getMode()).getPlayconfig();
 				if(pc == null) {

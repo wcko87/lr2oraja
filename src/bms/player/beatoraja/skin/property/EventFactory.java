@@ -7,11 +7,12 @@ import bms.player.beatoraja.ir.*;
 import bms.player.beatoraja.play.JudgeAlgorithm;
 import bms.player.beatoraja.play.TargetProperty;
 import bms.player.beatoraja.result.*;
-import bms.player.beatoraja.select.BarSorter;
+import bms.player.beatoraja.select.ModeFilter;
 import bms.player.beatoraja.select.MusicSelector;
 import bms.player.beatoraja.select.bar.*;
 import bms.player.beatoraja.skin.SkinProperty;
 import bms.player.beatoraja.song.SongData;
+import bms.player.beatoraja.song.archive.SongArchives;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.MathUtils;
 
@@ -24,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.function.*;
+import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -42,6 +44,10 @@ public class EventFactory {
 	 * @return イベントオブジェクト
 	 */
 	public static Event getEvent(int eventId) {
+		Event patternEvent = EventPattern.get(eventId);
+		if (patternEvent != null) {
+			return patternEvent;
+		}
 		for(EventType t : EventType.values()) {
 			if(t.id == eventId) {
 				return t.event;
@@ -59,26 +65,128 @@ public class EventFactory {
 	 * @return イベントオブジェクト
 	 */
 	public static Event getEvent(String eventName) {
+		Event patternEvent = EventPattern.get(eventName);
+		if (patternEvent != null) {
+			return patternEvent;
+		}
 		for(EventType t : EventType.values()) {
 			if(t.name().equals(eventName)) {
 				return t.event;
 			}
 		}
-
 		return null;
+	}
+
+	/**
+	 * Groups numbered Events by their IDs and skin-facing name pattern.
+	 */
+	private enum EventPattern {
+		KEY_ASSIGN(keyAssignIds(), "keyassign",
+				(index, eventId) -> createZeroArgEvent(EventType.changeKeyAssign(index), eventId)),
+		PRACTICE_ITEM(numberedIds(SkinProperty.BUTTON_PRACTICE_ITEM1, 16), "practice_item",
+				(index, eventId) -> createTwoArgEvent((state, arg1, arg2) -> state.executeEvent(eventId, arg1, arg2), eventId));
+
+		private final int[] ids;
+		private final String namePrefix;
+		private final Event[] events;
+
+		EventPattern(int[] ids, String namePrefix, EventGenerator generator) {
+			this.ids = ids;
+			this.namePrefix = namePrefix;
+			this.events = new Event[ids.length];
+			for (int index = 0; index < ids.length; index++) {
+				events[index] = generator.create(index, ids[index]);
+			}
+		}
+
+		private Event getById(int eventId) {
+			for (int index = 0; index < ids.length; index++) {
+				if (ids[index] == eventId) {
+					return events[index];
+				}
+			}
+			return null;
+		}
+
+		private Event getByName(String name) {
+			if (name == null || !name.startsWith(namePrefix)) {
+				return null;
+			}
+			try {
+				int index = Integer.parseInt(name.substring(namePrefix.length())) - 1;
+				return index >= 0 && index < events.length ? events[index] : null;
+			} catch (NumberFormatException e) {
+				return null;
+			}
+		}
+
+		private static Event get(int eventId) {
+			for (EventPattern pattern : values()) {
+				Event event = pattern.getById(eventId);
+				if (event != null) {
+					return event;
+				}
+			}
+			return null;
+		}
+
+		private static Event get(String name) {
+			for (EventPattern pattern : values()) {
+				Event event = pattern.getByName(name);
+				if (event != null) {
+					return event;
+				}
+			}
+			return null;
+		}
+
+		private static int[] numberedIds(int firstId, int count) {
+			int[] ids = new int[count];
+			for (int index = 0; index < count; index++) {
+				ids[index] = firstId + index;
+			}
+			return ids;
+		}
+
+		private static int[] keyAssignIds() {
+			int[] ids = new int[54];
+			for (int index = 0; index < 39; index++) {
+				ids[index] = 101 + index;
+			}
+			for (int index = 39; index < ids.length; index++) {
+				ids[index] = 150 + index - 39;
+			}
+			return ids;
+		}
+	}
+
+	@FunctionalInterface
+	private interface EventGenerator {
+		Event create(int index, int eventId);
 	}
 
 	public enum EventType {
 
 		/**
+		 * 次の譜面類似度フィルター(BEGINNER, NORMAL, ...)へ移動
+		 */
+		difficulty(10, (state, arg1) -> {
+			if(state instanceof MusicSelector selector) {
+				int difficulty = 0;
+				PlayerConfig config = selector.resource.getPlayerConfig();
+				for(;difficulty < MusicSelector.DIFFICULTY.length && MusicSelector.DIFFICULTY[difficulty] != config.getDifficultyFilter();difficulty++);
+				config.setDifficultyFilter(MusicSelector.DIFFICULTY[(difficulty + (arg1 >= 0 ? 1 : MusicSelector.DIFFICULTY.length - 1)) % MusicSelector.DIFFICULTY.length]);
+				selector.getBarManager().updateBar();
+				selector.play(OPTION_CHANGE);
+			}
+		}),
+		/**
 		 * 次のMODEフィルター(5KEY, 7KEY, ...)へ移動
 		 */
 		mode(11, (state, arg1) -> {
 			if(state instanceof MusicSelector selector) {
-				int mode = 0;
 				PlayerConfig config = selector.resource.getPlayerConfig();
-				for(;mode < MusicSelector.MODE.length && MusicSelector.MODE[mode] != config.getMode();mode++);
-				config.setMode(MusicSelector.MODE[(mode + (arg1 >= 0 ? 1 : MusicSelector.MODE.length - 1)) % MusicSelector.MODE.length]);
+				config.setModeFilter(ModeFilter.nextEnabled(config.getModeFilter(), config, arg1));
 				selector.getBarManager().updateBar();
 				selector.play(OPTION_CHANGE);
 			}
@@ -88,7 +196,7 @@ public class EventFactory {
 		 */
 		sort(12, (state, arg1) -> {
 			if(state instanceof MusicSelector selector) {
-				selector.setSort((selector.getSort() + (arg1 >= 0 ? 1 : BarSorter.defaultSorter.length - 1)) % BarSorter.defaultSorter.length);
+				selector.main.getPlayerConfig().cycleBarSorter(arg1);
 				selector.getBarManager().updateBar();
 				selector.play(OPTION_CHANGE);
 			}
@@ -98,14 +206,9 @@ public class EventFactory {
 		 */
 		songbar_sort(312, (state, arg1) -> {
 			if(state instanceof MusicSelector selector) {
-				for(int index = 0;index < BarSorter.allSorter.length;index++) {
-					if(BarSorter.allSorter[index].name().equals(selector.main.getPlayerConfig().getSortid())) {
-						selector.main.getPlayerConfig().setSortid(BarSorter.allSorter[(index + (arg1 >= 0 ? 1 : BarSorter.allSorter.length - 1)) % BarSorter.allSorter.length].name());
-						selector.getBarManager().updateBar();
-						selector.play(OPTION_CHANGE);
-						return;
-					}
-				}
+				selector.main.getPlayerConfig().cycleBarSorter(arg1);
+				selector.getBarManager().updateBar();
+				selector.play(OPTION_CHANGE);
 			}
 		}),
 		/**
@@ -160,7 +263,7 @@ public class EventFactory {
 				}
 			}
 		}),
-		
+
 	    /**
 	     * ゲージオプションの変更
 	     */
@@ -310,40 +413,36 @@ public class EventFactory {
 		open_with_explorer(212, state -> {
 			if(state instanceof MusicSelector selector) {
 				Bar current = selector.getBarManager().getSelected();
-				try {
-					if (Desktop.isDesktopSupported()) {
-						if (current instanceof SongBar songbar) {
-							if (songbar.existsSong()) {
-								Desktop.getDesktop().open(Paths.get(songbar.getSongData().getPath()).getParent().toFile());
-							} else if (songbar.getSongData() != null && songbar.getSongData().getOrg_md5() != null) {
-								String[] md5 = songbar.getSongData().getOrg_md5()
-										.toArray(new String[songbar.getSongData().getOrg_md5().size()]);
-								SongData[] songdata = selector.getSongDatabase().getSongDatas(md5);
+				if (Desktop.isDesktopSupported()) {
+					if (current instanceof SongBar songbar) {
+						if (songbar.existsSong()) {
+							openWithExplorer(songbar.getSongData().getPath(), false);
+						} else if (songbar.getSongData() != null && songbar.getSongData().getOrg_md5() != null) {
+							String[] md5 = songbar.getSongData().getOrg_md5()
+									.toArray(new String[songbar.getSongData().getOrg_md5().size()]);
+							SongData[] songdata = selector.getSongDatabase().getSongDatas(md5);
+							for (SongData sd : songdata) {
+								if (sd.getPath() != null) {
+									openWithExplorer(sd.getPath(), false);
+									break;
+								}
+							}
+						} else {
+							Matcher m = Pattern.compile(".[^\\(\\[～~]*").matcher(current.getTitle());
+							if (m.find()) {
+								SongData[] songdata = selector.getSongDatabase().getSongDatasByText(m.group());
 								for (SongData sd : songdata) {
 									if (sd.getPath() != null) {
-										Desktop.getDesktop().open(Paths.get(sd.getPath()).getParent().toFile());
+										openWithExplorer(sd.getPath(), false);
 										break;
 									}
 								}
-							} else {
-								Matcher m = Pattern.compile(".[^\\(\\[～~]*").matcher(current.getTitle());
-								if (m.find()) {
-									SongData[] songdata = selector.getSongDatabase().getSongDatasByText(m.group());
-									for (SongData sd : songdata) {
-										if (sd.getPath() != null) {
-											Desktop.getDesktop().open(Paths.get(sd.getPath()).getParent().toFile());
-											break;
-										}
-									}
-								}
 							}
-						} else if (current instanceof FolderBar) {
-							Desktop.getDesktop().open(Paths.get(((FolderBar) current).getFolderData().getPath()).toFile());
 						}
+					} else if (current instanceof FolderBar folderBar) {
+						openWithExplorer(folderBar.getFolderData().getPath(), true);
 					}
-				} catch (IOException e) {
-					e.printStackTrace();
-				}				
+				}
 			}
 		}),
 		/**
@@ -458,13 +557,13 @@ public class EventFactory {
 			final boolean next = arg1 >= 0;
 			final Consumer<SongData> changeFav = (sd) -> {
 				int type = 0;
-				if((sd.getFavorite() & SongData.INVISIBLE_CHART) != 0) {
+				if((sd.getSongReview().getFavorite() & SongData.INVISIBLE_CHART) != 0) {
 					type = 2;
-				} else if((sd.getFavorite() & SongData.FAVORITE_CHART) != 0) {
+				} else if((sd.getSongReview().getFavorite() & SongData.FAVORITE_CHART) != 0) {
 					type = 1;
 				}				
 				type = (type + (next ? 1 : 2)) % 3;
-				int favorite = sd.getFavorite();
+				int favorite = sd.getSongReview().getFavorite();
 				switch (type) {
 				case 0:
 					favorite &= 0xffffffff ^ (SongData.FAVORITE_CHART | SongData.INVISIBLE_CHART);
@@ -478,17 +577,17 @@ public class EventFactory {
 					favorite &= 0xffffffff ^ SongData.FAVORITE_CHART;
 					break;
 				}
-				sd.setFavorite(favorite);
-				state.main.getSongDatabase().setSongDatas(new SongData[]{sd});
+				sd.getSongReview().setFavorite(favorite);
+				state.main.getSongDatabase().setSongReviews(new SongData[]{sd});
 			};
 			if(state instanceof MusicSelector selector && selector.getSelectedBar() instanceof SongBar songbar) {
 				final SongData sd = songbar.getSongData();
 
 				if (sd != null && sd.getPath() != null) {
 					String message = next ? "Added to Invisible Chart" : "Removed from Favorite Chart";
-					if ((sd.getFavorite() & (SongData.FAVORITE_CHART | SongData.INVISIBLE_CHART)) == 0) {
+					if ((sd.getSongReview().getFavorite() & (SongData.FAVORITE_CHART | SongData.INVISIBLE_CHART)) == 0) {
 						message = next ? "Added to Favorite Chart" : "Added to Invisible Chart";
-					} else if ((sd.getFavorite() & SongData.INVISIBLE_CHART) != 0) {
+					} else if ((sd.getSongReview().getFavorite() & SongData.INVISIBLE_CHART) != 0) {
 						message = next ? "Removed from Invisible Chart" : "Added to Favorite Chart";
 					}
 					
@@ -510,15 +609,15 @@ public class EventFactory {
 			final boolean next = arg1 >= 0;
 			final Consumer<SongData> changeFav = (sd) -> {
 				int type = 0;
-				if((sd.getFavorite() & SongData.INVISIBLE_SONG) != 0) {
+				if((sd.getSongReview().getFavorite() & SongData.INVISIBLE_SONG) != 0) {
 					type = 2;
-				} else if((sd.getFavorite() & SongData.FAVORITE_SONG) != 0) {
+				} else if((sd.getSongReview().getFavorite() & SongData.FAVORITE_SONG) != 0) {
 					type = 1;
 				}				
 				type = (type + (next ? 1 : 2)) % 3;
 				SongData[] songs = state.main.getSongDatabase().getSongDatas("folder", sd.getFolder());
 				for(SongData song : songs) {
-					int favorite = song.getFavorite();
+					int favorite = song.getSongReview().getFavorite();
 					switch (type) {
 						case 0:
 							favorite &= 0xffffffff ^ (SongData.FAVORITE_SONG | SongData.INVISIBLE_SONG);
@@ -532,18 +631,18 @@ public class EventFactory {
 							favorite &= 0xffffffff ^ SongData.FAVORITE_SONG;
 							break;
 					}
-					song.setFavorite(favorite);
+					song.getSongReview().setFavorite(favorite);
 				}
-				state.main.getSongDatabase().setSongDatas(songs);
+				state.main.getSongDatabase().setSongReviews(songs);
 			};
 
 			if(state instanceof MusicSelector selector && selector.getSelectedBar() instanceof SongBar songbar) {
 				final SongData sd = songbar.getSongData();
 				if(sd != null && sd.getPath() != null) {
 					String message = next ? "Added to Invisible Song" : "Removed from Favorite Song";
-					if((sd.getFavorite() & (SongData.FAVORITE_SONG | SongData.INVISIBLE_SONG)) == 0) {
+					if((sd.getSongReview().getFavorite() & (SongData.FAVORITE_SONG | SongData.INVISIBLE_SONG)) == 0) {
 						message = next ? "Added to Favorite Song" : "Added to Invisible Song";
-					} else if((sd.getFavorite() & SongData.INVISIBLE_SONG) != 0) {
+					} else if((sd.getSongReview().getFavorite() & SongData.INVISIBLE_SONG) != 0) {
 						message =next ?  "Removed from Invisible Song" : "Added to Favorite Song";
 					}
 					changeFav.accept(sd);					
@@ -559,61 +658,6 @@ public class EventFactory {
 				}
 			}
 		}),
-		keyassign1(101, changeKeyAssign(0)),
-		keyassign2(102, changeKeyAssign(1)),
-		keyassign3(103, changeKeyAssign(2)),
-		keyassign4(104, changeKeyAssign(3)),
-		keyassign5(105, changeKeyAssign(4)),
-		keyassign6(106, changeKeyAssign(5)),
-		keyassign7(107, changeKeyAssign(6)),
-		keyassign8(108, changeKeyAssign(7)),
-		keyassign9(109, changeKeyAssign(8)),
-		keyassign10(110, changeKeyAssign(9)),
-		keyassign11(111, changeKeyAssign(10)),
-		keyassign12(112, changeKeyAssign(11)),
-		keyassign13(113, changeKeyAssign(12)),
-		keyassign14(114, changeKeyAssign(13)),
-		keyassign15(115, changeKeyAssign(14)),
-		keyassign16(116, changeKeyAssign(15)),
-		keyassign17(117, changeKeyAssign(16)),
-		keyassign18(118, changeKeyAssign(17)),
-		keyassign19(119, changeKeyAssign(18)),
-		keyassign20(120, changeKeyAssign(19)),
-		keyassign21(121, changeKeyAssign(20)),
-		keyassign22(122, changeKeyAssign(21)),
-		keyassign23(123, changeKeyAssign(22)),
-		keyassign24(124, changeKeyAssign(23)),
-		keyassign25(125, changeKeyAssign(24)),
-		keyassign26(126, changeKeyAssign(25)),
-		keyassign27(127, changeKeyAssign(26)),
-		keyassign28(128, changeKeyAssign(27)),
-		keyassign29(129, changeKeyAssign(28)),
-		keyassign30(130, changeKeyAssign(29)),
-		keyassign31(131, changeKeyAssign(30)),
-		keyassign32(132, changeKeyAssign(31)),
-		keyassign33(133, changeKeyAssign(32)),
-		keyassign34(134, changeKeyAssign(33)),
-		keyassign35(135, changeKeyAssign(34)),
-		keyassign36(136, changeKeyAssign(35)),
-		keyassign37(137, changeKeyAssign(36)),
-		keyassign38(138, changeKeyAssign(37)),
-		keyassign39(139, changeKeyAssign(38)),
-		keyassign40(150, changeKeyAssign(39)),
-		keyassign41(151, changeKeyAssign(40)),
-		keyassign42(152, changeKeyAssign(41)),
-		keyassign43(153, changeKeyAssign(42)),
-		keyassign44(154, changeKeyAssign(43)),
-		keyassign45(155, changeKeyAssign(44)),
-		keyassign46(156, changeKeyAssign(45)),
-		keyassign47(157, changeKeyAssign(46)),
-		keyassign48(158, changeKeyAssign(47)),
-		keyassign49(159, changeKeyAssign(48)),
-		keyassign50(160, changeKeyAssign(49)),
-		keyassign51(161, changeKeyAssign(50)),
-		keyassign52(162, changeKeyAssign(51)),
-		keyassign53(163, changeKeyAssign(52)),
-		keyassign54(164, changeKeyAssign(53)),
-
 	    /**
 	     * LNモードの変更
 	     */
@@ -774,6 +818,24 @@ public class EventFactory {
 		private EventType(int id, TriConsumer<MainState, Integer, Integer> action) {
 			this.id = id;
 			this.event = createTwoArgEvent(action, id);
+		}
+
+		private static void openWithExplorer(String pathText, boolean directory) {
+			if (pathText == null) {
+				return;
+			}
+			try {
+				Path path = Paths.get(pathText);
+				Path archive = SongArchives.archivePath(path);
+				Path target = archive != null ? archive.getParent() : directory ? path : path.getParent();
+				if (target == null || !Files.isDirectory(target)) {
+					Logger.getGlobal().warning("エクスプローラーで開く対象が存在しません : " + pathText);
+					return;
+				}
+				Desktop.getDesktop().open(target.toFile());
+			} catch (IOException | RuntimeException e) {
+				Logger.getGlobal().warning("エクスプローラーで開く処理に失敗しました : " + pathText + " : " + e.getMessage());
+			}
 		}
 		
 	    private static BiConsumer<MainState, Integer> changeAutoSaveReplay(final int index) {

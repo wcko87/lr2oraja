@@ -12,17 +12,22 @@ import bms.player.beatoraja.play.BMSPlayer;
 import bms.player.beatoraja.skin.property.TimerProperty;
 import bms.player.beatoraja.skin.property.TimerPropertyFactory;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.graphics.Camera;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.graphics.g2d.*;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.math.Matrix4;
+import com.badlogic.gdx.math.Rectangle;
+import com.badlogic.gdx.scenes.scene2d.utils.ScissorStack;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.IntArray;
 import com.badlogic.gdx.utils.IntIntMap;
 import com.badlogic.gdx.utils.IntMap;
+import com.badlogic.gdx.utils.Disposable;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -64,6 +69,8 @@ public class Skin {
 	 */
 	private Array<SkinObject> objects = new Array<SkinObject>();
 	private SkinObject[] objectarray = new SkinObject[0];
+	private final Array<Disposable> resources = new Array<>();
+	private SkinTextInput textInput;
 	/**
 	 * 除外されているスキンオブジェクト
 	 */
@@ -121,30 +128,43 @@ public class Skin {
 	}
 
 	public void add(SkinObject object) {
+		object.setSkinScale(dw, dh);
 		objects.add(object);
 	}
 
 	public void setDestination(SkinObject object, long time, float x, float y, float w, float h, int acc, int a,
 			int r, int g, int b, int blend, int filter, int angle, int center, int loop, int timer, int op1, int op2,
 			int op3, int[] offset) {
+		object.setSkinScale(dw, dh);
 		object.setDestination(time, x * dw, y * dh, w * dw, h * dh, acc, a, r, g, b, blend, filter, angle, center,
 				loop, timer > 0 ? TimerPropertyFactory.getTimerProperty(timer) : null, op1, op2, op3, offset);
 	}
 
 	public void setDestination(SkinObject object, long time, float x, float y, float w, float h, int acc, int a,
 	                           int r, int g, int b, int blend, int filter, int angle, int center, int loop, TimerProperty timer, int[] op) {
+		object.setSkinScale(dw, dh);
 		object.setDestination(time, x * dw, y * dh, w * dw, h * dh, acc, a, r, g, b, blend, filter, angle, center,
 				loop, timer, op);
 	}
 
 	public void setDestination(SkinObject object, long time, float x, float y, float w, float h, int acc, int a,
+						   int r, int g, int b, int blend, int filter, int angle, int center, int loop, TimerProperty timer,
+						   int[] op, BooleanProperty[] draw) {
+		object.setSkinScale(dw, dh);
+		object.setDestination(time, x * dw, y * dh, w * dw, h * dh, acc, a, r, g, b, blend, filter, angle, center,
+				loop, timer, op, draw);
+	}
+
+	public void setDestination(SkinObject object, long time, float x, float y, float w, float h, int acc, int a,
 	                           int r, int g, int b, int blend, int filter, int angle, int center, int loop, TimerProperty timer, BooleanProperty draw) {
+		object.setSkinScale(dw, dh);
 		object.setDestination(time, x * dw, y * dh, w * dw, h * dh, acc, a, r, g, b, blend, filter, angle, center,
 				loop, timer, draw);
 	}
 
 	public void addNumber(SkinNumber number, long time, float x, float y, float w, float h, int acc, int a, int r,
 			int g, int b, int blend, int filter, int angle, int center, int loop, TimerProperty timer, int op1, int op2, int op3, int offset) {
+		number.setSkinScale(dw, dh);
 		number.setDestination(time, x * dw, y * dh, w * dw, h * dh, acc, a, r, g, b, blend, filter, angle, center,
 				loop, timer, op1, op2, op3, offset);
 		objects.add(number);
@@ -162,6 +182,10 @@ public class Skin {
 
 	public void setMouseRect(SkinObject object, float x, float y, float w, float h) {
 		object.setMouseRect(x * dw, y * dh, w * dw, h * dh);
+	}
+
+	public void setDestinationClip(SkinObject object, long time, float x, float y, float w, float h) {
+		object.setDestinationClip(time, new Rectangle(x * dw, y * dh, w * dw, h * dh));
 	}
 
 	public SkinObject[] getAllSkinObjects() {
@@ -243,22 +267,14 @@ public class Skin {
 	}
 	
 	private SkinObjectRenderer renderer;
+	private final Matrix4 transform = new Matrix4();
+	private final OrthographicCamera scissorCamera = new OrthographicCamera();
 	
 	private long nextpreparetime;
 	private long prepareduration;
 
 	public void drawAllObjects(SpriteBatch sprite, MainState state) {
-		if(renderer == null) {
-			SkinOffset offsetAll = getOffsetAll(state);
-			Matrix4 transform = new Matrix4();
-			if(offsetAll != null) {
-				transform.set(width * offsetAll.x /100, height * offsetAll.y / 100, 0, 0, 0, 0, 0, (offsetAll.w + 100) / 100, (offsetAll.h + 100) / 100, 1);
-			} else {
-				transform.set(0, 0, 0, 0, 0, 0, 0, 1, 1, 1);
-			}
-			sprite.setTransformMatrix(transform);
-			renderer = new SkinObjectRenderer(sprite);
-		}
+		ensureRenderer(sprite, state);
 		
 		final long microtime = state.timer.getNowMicroTime();
 
@@ -280,7 +296,7 @@ public class Skin {
 			for (SkinObject obj : objectarray) {
 				if (obj.draw) {
 					var objDraw = System.nanoTime();
-					obj.draw(renderer);
+					drawObject(obj);
 					tempmap.get(obj.getClass())[4] += (System.nanoTime() - objDraw);
 				}
 			}
@@ -308,15 +324,86 @@ public class Skin {
 
 			for (SkinObject obj : objectarray) {
 				if (obj.draw) {
-					obj.draw(renderer);
+					drawObject(obj);
 				}
 			}
 		}
 	}
 
+	public void drawAllObjectsSafely(SpriteBatch sprite, MainState state) {
+		ensureRenderer(sprite, state);
+
+		final long microtime = state.timer.getNowMicroTime();
+		if (nextpreparetime <= microtime) {
+			final long time = state.timer.getNowTime();
+			for (SkinObject obj : objectarray) {
+				try {
+					obj.prepare(time, state);
+				} catch (Throwable e) {
+					obj.draw = false;
+				}
+			}
+
+			nextpreparetime += ((microtime - nextpreparetime) / prepareduration + 1) * prepareduration;
+		}
+
+		for (SkinObject obj : objectarray) {
+			if (obj.draw) {
+				try {
+					drawObject(obj);
+				} catch (Throwable e) {
+					obj.draw = false;
+				}
+			}
+		}
+	}
+
+	private void drawObject(SkinObject obj) {
+		if (!obj.hasClip()) {
+			obj.draw(renderer);
+			return;
+		}
+
+		Rectangle clip = obj.getClip();
+		if (renderer.pushClip(clip.x, clip.y, clip.width, clip.height)) {
+			try {
+				obj.draw(renderer);
+			} finally {
+				renderer.popClip();
+			}
+		}
+	}
+
+	private void ensureRenderer(SpriteBatch sprite, MainState state) {
+		if(renderer != null) {
+			return;
+		}
+
+		SkinOffset offsetAll = getOffsetAll(state);
+		if(offsetAll != null) {
+			transform.set(width * offsetAll.x /100, height * offsetAll.y / 100, 0, 0, 0, 0, 0,
+					(offsetAll.w + 100) / 100, (offsetAll.h + 100) / 100, 1);
+		} else {
+			transform.set(0, 0, 0, 0, 0, 0, 0, 1, 1, 1);
+		}
+		sprite.setTransformMatrix(transform);
+		scissorCamera.setToOrtho(false, width, height);
+		renderer = new SkinObjectRenderer(sprite, scissorCamera);
+	}
+
 	public void mousePressed(MainState state, int button, int x, int y) {
+		if (textInput != null) {
+			textInput.commitIfOutside(x, y);
+		}
 		for (int i = objectarray.length - 1; i >= 0; i--) {
 			final SkinObject obj = objectarray[i];
+			if (obj instanceof SkinText text && text.isEditable() && text.draw && text.getInputBounds().contains(x, y)) {
+				if (textInput == null) {
+					textInput = new SkinTextInput();
+				}
+				textInput.focus(state, text);
+				break;
+			}
 			if (obj.draw && obj.mousePressed(state, button, x, y)) {
 				break;
 			}
@@ -333,15 +420,48 @@ public class Skin {
 	}
 
 	public void dispose() {
+		if (textInput != null) {
+			disposeResource(textInput::dispose);
+			textInput = null;
+		}
 		for (SkinObject obj : objects) {
 			if(!obj.isDisposed()) {
-				obj.dispose();
+				disposeResource(obj);
 			}
 		}
 		for (SkinObject obj : removes) {
 			if(!obj.isDisposed()) {
-				obj.dispose();
+				disposeResource(obj);
 			}
+		}
+		for (Disposable resource : resources) {
+			disposeResource(resource);
+		}
+		resources.clear();
+	}
+
+	private static void disposeResource(Disposable resource) {
+		try {
+			resource.dispose();
+		} catch (RuntimeException e) {
+			Logger.getGlobal().log(java.util.logging.Level.WARNING, "Skin resource disposal failed", e);
+		}
+	}
+
+	public void addResource(Disposable resource) {
+		if (resource != null && !resources.contains(resource, true)) {
+			resources.add(resource);
+		}
+	}
+
+	/** Retains even unused loader textures; object disposal may already have deleted them. */
+	public void addResource(Texture texture) {
+		if (texture != null) {
+			addResource((Disposable) () -> {
+				if (texture.getTextureObjectHandle() != 0) {
+					texture.dispose();
+				}
+			});
 		}
 	}
 
@@ -404,6 +524,7 @@ public class Skin {
 	public static final class SkinObjectRenderer {
 		
 		private final SpriteBatch sprite;
+		private final Camera camera;
 		
 		private final ShaderProgram[] shaders = new ShaderProgram[6];
 		
@@ -423,9 +544,13 @@ public class Skin {
 		private final Color color = new Color(Color.WHITE);
 		
 		private Color orgcolor;
+
+		private final Rectangle clipBounds = new Rectangle();
+		private final Rectangle scissors = new Rectangle();
 		
-		public SkinObjectRenderer(SpriteBatch sprite) {
+		public SkinObjectRenderer(SpriteBatch sprite, Camera camera) {
 			this.sprite = sprite;
+			this.camera = camera;
 			shaders[TYPE_BILINEAR] = ShaderManager.getShader("bilinear");
 			shaders[TYPE_FFMPEG] = ShaderManager.getShader("ffmpeg");
 			shaders[TYPE_LAYER] = ShaderManager.getShader("layer");
@@ -433,6 +558,25 @@ public class Skin {
 
 			sprite.setShader(shaders[current]);
 			sprite.setColor(Color.WHITE);
+		}
+
+		public SpriteBatch getSpriteBatch() {
+			return sprite;
+		}
+
+		public boolean pushClip(float x, float y, float width, float height) {
+			if (width <= 0 || height <= 0) {
+				return false;
+			}
+			sprite.flush();
+			clipBounds.set(x, y, width, height);
+			ScissorStack.calculateScissors(camera, sprite.getTransformMatrix(), clipBounds, scissors);
+			return ScissorStack.pushScissors(scissors);
+		}
+
+		public void popClip() {
+			sprite.flush();
+			ScissorStack.popScissors();
 		}
 
 		public void draw(BitmapFont font, String s, float x, float y, Color c) {
@@ -509,21 +653,15 @@ public class Skin {
 			}
 
 			switch (blend) {
-			case 2:
-				sprite.setBlendFunction(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-				break;
-			case 3:
+			case 2 -> sprite.setBlendFunction(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+			case 3 -> {
 				// TODO 減算描画は難しいか？
-				Gdx.gl.glBlendEquation(GL20.GL_FUNC_SUBTRACT);
-				sprite.setBlendFunction(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-				Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
-				break;
-			case 4:
-				sprite.setBlendFunction(GL11.GL_ZERO, GL11.GL_SRC_COLOR);
-				break;
-			case 9:
-				sprite.setBlendFunction(GL11.GL_ONE_MINUS_DST_COLOR, GL11.GL_ZERO);
-				break;
+					Gdx.gl.glBlendEquation(GL20.GL_FUNC_SUBTRACT);
+					sprite.setBlendFunction(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+					Gdx.gl.glBlendEquation(GL20.GL_FUNC_ADD);
+			}
+			case 4 -> sprite.setBlendFunction(GL11.GL_ZERO, GL11.GL_SRC_COLOR);
+			case 9 -> sprite.setBlendFunction(GL11.GL_ONE_MINUS_DST_COLOR, GL11.GL_ZERO);
 			}
 
 			if(color != null) {
@@ -565,11 +703,17 @@ public class Skin {
 		}
 
 		public void setColor(Color color) {
-			this.color.set(color);
+			this.color.r = color.r;
+			this.color.g = color.g;
+			this.color.b = color.b;
+			this.color.a = color.a;
 		}
 		
 		public void setColor(float r, float g, float b, float a) {
-			this.color.set(r,g,b,a);
+			this.color.r = r;
+			this.color.g = g;
+			this.color.b = b;
+			this.color.a = a;
 		}
 	}
 
@@ -577,15 +721,8 @@ public class Skin {
 		SkinOffset offsetAll = null;
 		if(state instanceof BMSPlayer) {
 			switch(((BMSPlayer)state).getSkinType()) {
-			case PLAY_5KEYS:
-			case PLAY_7KEYS:
-			case PLAY_9KEYS:
-			case PLAY_10KEYS:
-			case PLAY_14KEYS:
-			case PLAY_24KEYS:
-			case PLAY_24KEYS_DOUBLE:
-				offsetAll = state.getOffsetValue(SkinProperty.OFFSET_ALL);
-				break;
+				case PLAY_5KEYS, PLAY_7KEYS, PLAY_9KEYS, PLAY_10KEYS, PLAY_14KEYS, PLAY_24KEYS, PLAY_24KEYS_DOUBLE ->
+					offsetAll = state.getOffsetValue(SkinProperty.OFFSET_ALL);
 			}
 		}
 		return offsetAll;

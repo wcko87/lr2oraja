@@ -10,7 +10,6 @@ import java.util.*;
 
 import com.badlogic.gdx.graphics.*;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
-import com.fasterxml.jackson.databind.deser.std.NumberDeserializers.LongDeserializer;
 
 /**
  * BPM推移のグラフ
@@ -57,12 +56,12 @@ public class SkinBPMGraph extends SkinObject {
 	public SkinBPMGraph(int delay, int lineWidth, String mainBPMColor, String minBPMColor, String maxBPMColor, String otherBPMColor, String stopLineColor, String transitionLineColor) {
 		if(delay > 0) this.delay = delay;
 		if(lineWidth > 0) this.lineWidth = lineWidth;
-		String mainBPMColorString = mainBPMColor.replaceAll("[^0-9a-fA-F]", "").substring(0, mainBPMColor.replaceAll("[^0-9a-fA-F]", "").length() > 6 ? 6 : mainBPMColor.replaceAll("[^0-9a-fA-F]", "").length());
-		String minBPMColorString = minBPMColor.replaceAll("[^0-9a-fA-F]", "").substring(0, minBPMColor.replaceAll("[^0-9a-fA-F]", "").length() > 6 ? 6 : minBPMColor.replaceAll("[^0-9a-fA-F]", "").length());
-		String maxBPMColorString = maxBPMColor.replaceAll("[^0-9a-fA-F]", "").substring(0, maxBPMColor.replaceAll("[^0-9a-fA-F]", "").length() > 6 ? 6 : maxBPMColor.replaceAll("[^0-9a-fA-F]", "").length());
-		String otherBPMColorString = otherBPMColor.replaceAll("[^0-9a-fA-F]", "").substring(0, otherBPMColor.replaceAll("[^0-9a-fA-F]", "").length() > 6 ? 6 : otherBPMColor.replaceAll("[^0-9a-fA-F]", "").length());
-		String stopLineColorString = stopLineColor.replaceAll("[^0-9a-fA-F]", "").substring(0, stopLineColor.replaceAll("[^0-9a-fA-F]", "").length() > 6 ? 6 : stopLineColor.replaceAll("[^0-9a-fA-F]", "").length());
-		String transitionLineColorString = transitionLineColor.replaceAll("[^0-9a-fA-F]", "").substring(0, transitionLineColor.replaceAll("[^0-9a-fA-F]", "").length() > 6 ? 6 : transitionLineColor.replaceAll("[^0-9a-fA-F]", "").length());
+		String mainBPMColorString = normalizeColorString(mainBPMColor);
+		String minBPMColorString = normalizeColorString(minBPMColor);
+		String maxBPMColorString = normalizeColorString(maxBPMColor);
+		String otherBPMColorString = normalizeColorString(otherBPMColor);
+		String stopLineColorString = normalizeColorString(stopLineColor);
+		String transitionLineColorString = normalizeColorString(transitionLineColor);
 		if(mainBPMColorString.length() > 0) {
 			mainLineColor = Color.valueOf(mainBPMColorString);
 		}
@@ -116,7 +115,7 @@ public class SkinBPMGraph extends SkinObject {
 			if(d[0] > 0) {
 				minbpm = Math.min(d[0], minbpm);				
 			}
-			maxbpm = Math.min(d[0], maxbpm);
+			maxbpm = Math.max(d[0], maxbpm);
 		}
 		this.mainbpm = info.getMainbpm();
 		
@@ -167,7 +166,7 @@ public class SkinBPMGraph extends SkinObject {
 	
 	private void updateTexture() {
 		Pixmap shape;
-		if (data.length < 2) {
+		if (data.length < 2 || mainbpm <= 0) {
 			shape = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
 		} else {
 			final int width = (int) Math.abs(region.width);
@@ -228,12 +227,15 @@ public class SkinBPMGraph extends SkinObject {
 
 	}
 
+	private static String normalizeColorString(String color) {
+		String normalized = color.replaceAll("[^0-9a-fA-F]", "");
+		return normalized.substring(0, Math.min(6, normalized.length()));
+	}
+
 	@Override
 	public void dispose() {
-		if (shapetex != null) {
-			shapetex.getTexture().dispose();
-			shapetex = null;
-		}
+		Optional.ofNullable(shapetex).ifPresent(t -> t.getTexture().dispose());
+		setDisposed();
 	}
 
 }

@@ -6,6 +6,7 @@ import java.util.logging.Logger;
 
 import bms.model.TimeLine;
 import bms.player.beatoraja.PixmapResourcePool;
+import bms.player.beatoraja.song.SongResource;
 
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
@@ -16,6 +17,10 @@ import com.badlogic.gdx.graphics.Texture;
  * @author exch
  */
 public class BGImageProcessor {
+	/** Point-in-time summary of BGA image resources. */
+	public record MemoryStatistics(int pixmapCount, long estimatedPixmapBytes, int textureCount,
+			long estimatedTextureBytes, int songResourceCount) {
+	}
 	
 	public static final String[] pic_extension = { "jpg", "jpeg", "gif", "bmp", "png", "tga" };
 	/**
@@ -54,7 +59,16 @@ public class BGImageProcessor {
 	}
 
 	public void put(int id, Path path) {
-		Pixmap pixmap = cache.get(path.toString());
+		Pixmap pixmap = cache.getPixmap(path.toString());
+		put(id, pixmap);
+	}
+
+	public void put(int id, SongResource resource) {
+		Pixmap pixmap = cache.getPixmap(resource);
+		put(id, pixmap);
+	}
+
+	private void put(int id, Pixmap pixmap) {
 		if(id >= bgamap.length) {
 			bgamap = Arrays.copyOf(bgamap, id + 1);
 		}
@@ -67,6 +81,20 @@ public class BGImageProcessor {
 	
 	public void disposeOld() {
 		cache.disposeOld();
+	}
+
+	public MemoryStatistics getMemoryStatistics() {
+		PixmapResourcePool.MemoryStatistics pixmaps = cache.getMemoryStatistics();
+		int textureCount = 0;
+		long textureBytes = 0;
+		for (Texture texture : bgacache) {
+			if (texture != null) {
+				textureCount++;
+				textureBytes += (long) texture.getWidth() * texture.getHeight() * Integer.BYTES;
+			}
+		}
+		return new MemoryStatistics(pixmaps.pixmapCount(), pixmaps.estimatedNativeBytes(), textureCount,
+				textureBytes, pixmaps.songResourceCount());
 	}
 
 	/**

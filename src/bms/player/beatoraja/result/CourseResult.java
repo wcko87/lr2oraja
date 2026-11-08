@@ -31,7 +31,7 @@ public class CourseResult extends AbstractResult {
 	private ResultKeyProperty property;
 
 	public CourseResult(MainController main) {
-		super(main);
+		super(main, MainStateType.COURSERESULT);
 	}
 
 	public void create() {
@@ -95,16 +95,15 @@ public class CourseResult extends AbstractResult {
         	for(IRStatus irc : ir) {
     			boolean send = resource.isUpdateCourseScore() && resource.getCourseData().isRelease();
     			switch(irc.config.getIrsend()) {
-    			case IRConfig.IR_SEND_ALWAYS:
-    				break;
-    			case IRConfig.IR_SEND_COMPLETE_SONG:
-//    				FloatArray gauge = resource.getGauge()[resource.getGrooveGauge().getType()];
-//    				send &= gauge.get(gauge.size - 1) > 0.0;
-    				break;
-    			case IRConfig.IR_SEND_UPDATE_SCORE:
-//    				send &= (newscore.getExscore() > oldscore.getExscore() || newscore.getClear() > oldscore.getClear()
-//    						|| newscore.getCombo() > oldscore.getCombo() || newscore.getMinbp() < oldscore.getMinbp());
-    				break;
+	    			case IRConfig.IR_SEND_ALWAYS -> {}
+	    			case IRConfig.IR_SEND_COMPLETE_SONG -> {
+	//    				FloatArray gauge = resource.getGauge()[resource.getGrooveGauge().getType()];
+	//    				send &= gauge.get(gauge.size - 1) > 0.0;
+	    			}
+	    			case IRConfig.IR_SEND_UPDATE_SCORE -> {
+	//    				send &= (newscore.getExscore() > oldscore.getExscore() || newscore.getClear() > oldscore.getClear()
+	//					|| newscore.getCombo() > oldscore.getCombo() || newscore.getMinbp() < oldscore.getMinbp());    				
+	    			}
     			}
     			
     			if(send) {
@@ -141,7 +140,7 @@ public class CourseResult extends AbstractResult {
 					try {
 						IRResponse<bms.player.beatoraja.ir.IRScoreData[]> response = ir[0].connection.getCoursePlayData(null, new IRCourseData(resource.getCourseData(), lnmode));
 						if (response.isSucceeded()) {
-							ranking.updateScore(response.getData(), newscore.getExscore() > oldscore.getExscore() ? newscore : oldscore);
+							ranking.updateScore(ir[0].player, main.getRivalDataAccessor(), response.getData(), newscore.getExscore() > oldscore.getExscore() ? newscore : oldscore);
 							rankingOffset = ranking.getRank() > 10 ? ranking.getRank() - 5 : 0;
 							Logger.getGlobal().info("IRからのスコア取得成功 : " + response.getMessage());
 						} else {
@@ -278,24 +277,8 @@ public class CourseResult extends AbstractResult {
 	}
 
 	public int getJudgeCount(int judge, boolean fast) {
-		ScoreData score = resource.getCourseScoreData();
-		if (score != null) {
-			switch (judge) {
-				case 0:
-					return fast ? score.getEpg() : score.getLpg();
-				case 1:
-					return fast ? score.getEgr() : score.getLgr();
-				case 2:
-					return fast ? score.getEgd() : score.getLgd();
-				case 3:
-					return fast ? score.getEbd() : score.getLbd();
-				case 4:
-					return fast ? score.getEpr() : score.getLpr();
-				case 5:
-					return fast ? score.getEms() : score.getLms();
-			}
-		}
-		return 0;
+		final ScoreData score = resource.getCourseScoreData();		
+		return score != null ? score.getJudgeCount(judge, fast) : 0;
 	}
 
 	@Override

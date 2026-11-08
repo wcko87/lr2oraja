@@ -53,6 +53,8 @@ public class JsonSkinSerializer {
 				JsonSkin.NoteSet.class,
 				JsonSkin.Gauge.class,
 				JsonSkin.BGA.class,
+				JsonSkin.SkinPreview.class,
+				JsonSkin.Practice.class,
 				JsonSkin.Judge.class,
 				JsonSkin.SongList.class,
 				JsonSkin.Destination.class,
@@ -71,6 +73,7 @@ public class JsonSkinSerializer {
 				JsonSkin.Offset[].class,
 				JsonSkin.Source[].class,
 				JsonSkin.Font[].class,
+				JsonSkin.FontFallback[].class,
 				JsonSkin.Image[].class,
 				JsonSkin.ImageSet[].class,
 				JsonSkin.Value[].class,
@@ -93,13 +96,66 @@ public class JsonSkinSerializer {
 			json.setSerializer(c, new ArraySerializer<>(enabledOptions, path));
 		}
 
-		json.setSerializer(BooleanProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadBooleanProperty, BooleanPropertyFactory::getBooleanProperty));
-		json.setSerializer(IntegerProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadIntegerProperty, IntegerPropertyFactory::getIntegerProperty));
-		json.setSerializer(FloatProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadFloatProperty, FloatPropertyFactory::getRateProperty));
-		json.setSerializer(StringProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadStringProperty, StringPropertyFactory::getStringProperty));
+		json.setSerializer(JsonSkin.FontFallback.class, new FontFallbackSerializer());
+		json.setSerializer(BooleanProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadBooleanProperty,
+				BooleanPropertyFactory::getBooleanProperty, BooleanPropertyFactory::getBooleanProperty));
+		json.setSerializer(JsonSkin.DestinationOption.class, new DestinationOptionSerializer());
+		json.setSerializer(IntegerProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadIntegerProperty,
+				IntegerPropertyFactory::getIntegerProperty, IntegerPropertyFactory::getIntegerProperty));
+		json.setSerializer(FloatProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadFloatProperty,
+				FloatPropertyFactory::getRateProperty, FloatPropertyFactory::getRateProperty));
+		json.setSerializer(StringProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadStringProperty,
+				StringPropertyFactory::getStringProperty, StringPropertyFactory::getStringProperty));
 		json.setSerializer(TimerProperty.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadTimerProperty, TimerPropertyFactory::getTimerProperty));
 		json.setSerializer(FloatWriter.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadFloatWriter, FloatPropertyFactory::getRateWriter));
+		json.setSerializer(StringWriter.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadStringWriter, null));
 		json.setSerializer(Event.class, new LuaScriptSerializer<>(SkinLuaAccessor::loadEvent, EventFactory::getEvent));
+	}
+
+	private class DestinationOptionSerializer extends Json.ReadOnlySerializer<JsonSkin.DestinationOption> {
+		@Override
+		public JsonSkin.DestinationOption read(Json json, JsonValue jsonValue, Class cls) {
+			if (jsonValue.isNumber()) {
+				return new JsonSkin.DestinationOption(jsonValue.asInt());
+			}
+			if (jsonValue.isString()) {
+				String value = jsonValue.asString();
+				BooleanProperty property = BooleanPropertyFactory.getBooleanProperty(value);
+				if (property == null && lua != null) {
+					property = lua.loadBooleanProperty(value);
+				}
+				return new JsonSkin.DestinationOption(property);
+			}
+			return new JsonSkin.DestinationOption();
+		}
+	}
+
+	private class FontFallbackSerializer extends Json.ReadOnlySerializer<JsonSkin.FontFallback> {
+		public JsonSkin.FontFallback read(Json json, JsonValue jsonValue, Class cls) {
+			JsonSkin.FontFallback fallback = new JsonSkin.FontFallback();
+			if (jsonValue == null) {
+				return fallback;
+			}
+			if (jsonValue.isString()) {
+				fallback.path = jsonValue.asString();
+				fallback.type = 0;
+			} else if (jsonValue.isObject()) {
+				JsonValue path = jsonValue.get("path");
+				if (path != null) {
+					fallback.path = path.asString();
+				} else if (jsonValue.has("value")) {
+					fallback.path = jsonValue.get("value").asString();
+				} else if (jsonValue.child != null && jsonValue.child.isString()) {
+					fallback.path = jsonValue.child.asString();
+				}
+				JsonValue type = jsonValue.get("type");
+				fallback.type = type != null ? type.asInt() : 0;
+			} else {
+				fallback.path = jsonValue.asString();
+				fallback.type = 0;
+			}
+			return fallback;
+		}
 	}
 
 	private abstract class Serializer<T> extends Json.ReadOnlySerializer<T> {
@@ -285,15 +341,26 @@ public class JsonSkinSerializer {
 	private class LuaScriptSerializer<T> extends Json.ReadOnlySerializer<T> {
 		BiFunction<SkinLuaAccessor, String, T> luaPropertyLoader;
 		Function<Integer, T> idPropertyLoader;
+		Function<String, T> namePropertyLoader;
 
 		LuaScriptSerializer(BiFunction<SkinLuaAccessor, String, T> loader, Function<Integer, T> byId) {
+			this(loader, byId, null);
+		}
+
+		LuaScriptSerializer(BiFunction<SkinLuaAccessor, String, T> loader, Function<Integer, T> byId, Function<String, T> byName) {
 			luaPropertyLoader = loader;
 			idPropertyLoader = byId;
+			namePropertyLoader = byName;
 		}
 
 		public T read(Json json, JsonValue jsonValue, Class cls) {
-			if (jsonValue.isString() && luaPropertyLoader != null) {
-				return luaPropertyLoader.apply(lua, jsonValue.asString());
+			if (jsonValue.isString()) {
+				String value = jsonValue.asString();
+				T property = namePropertyLoader != null ? namePropertyLoader.apply(value) : null;
+				if (property != null) {
+					return property;
+				}
+				return luaPropertyLoader != null ? luaPropertyLoader.apply(lua, value) : null;
 			} else if (jsonValue.isNumber() && idPropertyLoader != null) {
 				return idPropertyLoader.apply(jsonValue.asInt());
 			} else {

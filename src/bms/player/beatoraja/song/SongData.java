@@ -63,6 +63,7 @@ public class SongData implements Validatable, IpfsInformation {
 	private String subartist = "";
 	private String fullartist;
 	private int favorite;
+	private SongReview songReview;
 	private List<String> path = new ArrayList<String>();
 	private String tag = "";
 	private String md5 = "";
@@ -126,11 +127,22 @@ public class SongData implements Validatable, IpfsInformation {
 	}
 	
 	public SongData(BMSModel model, boolean containstxt) {
+		this(model, containstxt, true);
+	}
+
+	/**
+	 * @param createInformation whether to calculate derived song information now
+	 */
+	public SongData(BMSModel model, boolean containstxt, boolean createInformation) {
 		content = containstxt ? CONTENT_TEXT : 0;
-		setBMSModel(model);
+		setBMSModel(model, createInformation);
 	}
 
 	public void setBMSModel(BMSModel model) {
+		setBMSModel(model, true);
+	}
+
+	private void setBMSModel(BMSModel model, boolean createInformation) {
 		if(model == null) {
 			return;
 		}
@@ -204,7 +216,7 @@ public class SongData implements Validatable, IpfsInformation {
 		content |= model.getBgaList().length > 0 ? CONTENT_BGA : 0;
 		content |= length >= 30000 && model.getWavList().length <= (length / (50 * 1000)) + 3 ? CONTENT_NOKEYSOUND : 0;
 		
-		info = new SongInformation(model);
+		info = createInformation ? new SongInformation(model) : null;
 		try {
 			MessageDigest md = MessageDigest.getInstance("SHA-256");
 			charthash = BMSDecoder.convertHexString(md.digest(model.toChartString().getBytes()));
@@ -222,6 +234,21 @@ public class SongData implements Validatable, IpfsInformation {
 	}
 	public void setFavorite(int favorite) {
 		this.favorite = favorite;
+	}
+	public SongReview getSongReview() {
+		if (songReview == null) {
+			songReview = new SongReview();
+		}
+		if ((songReview.getSha256() == null || songReview.getSha256().length() == 0) && getSha256().length() > 0) {
+			songReview.setSha256(getSha256());
+		}
+		return songReview;
+	}
+	public void setSongReview(SongReview songReview) {
+		this.songReview = songReview != null ? songReview : new SongReview();
+		if ((this.songReview.getSha256() == null || this.songReview.getSha256().length() == 0) && getSha256().length() > 0) {
+			this.songReview.setSha256(getSha256());
+		}
 	}
 	public String getPath() {
 		if(path.size() > 0) {
@@ -427,6 +454,9 @@ public class SongData implements Validatable, IpfsInformation {
 	}
 	public void setSha256(String sha256) {
 		this.sha256 = sha256;
+		if (songReview != null) {
+			songReview.setSha256(sha256);
+		}
 	}
 	public int getFeature() {
 		return feature;

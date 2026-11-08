@@ -123,62 +123,62 @@ public final class SkinSlider extends SkinObject {
 	protected boolean mousePressed(MainState state, int button, int x, int y) {
 		if (writer != null) {
 			switch (direction) {
-			case 0:
-				if (region.x <= x && region.x + region.width >= x && region.y <= y && region.y + range >= y) {
-					float value;
-					if (Math.abs(y - region.y) < 1) {
-						value = 0;
-					} else if (Math.abs(y - (region.y + range)) < 1) {
-						value = 1;
-					} else {
-						value = (y - region.y) / range;
+				case 0 -> {
+					if (region.x <= x && region.x + region.width >= x && region.y <= y && region.y + range >= y) {
+						float value;
+						if (Math.abs(y - region.y) < 1) {
+							value = 0;
+						} else if (Math.abs(y - (region.y + range)) < 1) {
+							value = 1;
+						} else {
+							value = (y - region.y) / range;
+						}
+						writer.set(state, value);
+						return true;
 					}
-					writer.set(state, value);
-					return true;
 				}
-				break;
-			case 1:
-				if (region.x <= x && region.x + range >= x && region.y <= y && region.y + region.height >= y) {
-					float value;
-					if (Math.abs(x - region.x) < 1) {
-						value = 0;
-					} else if (Math.abs(x - (region.x + range)) < 1) {
-						value = 1;
-					} else {
-						value = (x - region.x) / range;
+				case 1 -> {
+					if (region.x <= x && region.x + range >= x && region.y <= y && region.y + region.height >= y) {
+						float value;
+						if (Math.abs(x - region.x) < 1) {
+							value = 0;
+						} else if (Math.abs(x - (region.x + range)) < 1) {
+							value = 1;
+						} else {
+							value = (x - region.x) / range;
+						}
+						writer.set(state, value);
+						return true;
 					}
-					writer.set(state, value);
-					return true;
 				}
-				break;
-			case 2:
-				if (region.x <= x && region.x + region.width >= x && region.y - range <= y && region.y >= y) {
-					float value;
-					if (Math.abs(y - region.y) < 1) {
-						value = 0;
-					} else if (Math.abs(y - (region.y - range)) < 1) {
-						value = 1;
-					} else {
-						value = (region.y - y) / range;
+				case 2 -> {
+					if (region.x <= x && region.x + region.width >= x && region.y - range <= y && region.y >= y) {
+						float value;
+						if (Math.abs(y - region.y) < 1) {
+							value = 0;
+						} else if (Math.abs(y - (region.y - range)) < 1) {
+							value = 1;
+						} else {
+							value = (region.y - y) / range;
+						}
+						writer.set(state, value);
+						return true;
 					}
-					writer.set(state, value);
-					return true;
 				}
-				break;
-			case 3:
-				if (region.x >= x && region.x - range <= x && region.y <= y && region.y + region.height >= y) {
-					float value;
-					if (Math.abs(x - region.x) < 1) {
-						value = 0;
-					} else if (Math.abs(x - (region.x - range)) < 1) {
-						value = 1;
-					} else {
-						value = (region.x - x) / range;
+				case 3 -> {
+					if (region.x >= x && region.x - range <= x && region.y <= y && region.y + region.height >= y) {
+						float value;
+						if (Math.abs(x - region.x) < 1) {
+							value = 0;
+						} else if (Math.abs(x - (region.x - range)) < 1) {
+							value = 1;
+						} else {
+							value = (region.x - x) / range;
+						}
+						writer.set(state, value);
+						return true;
 					}
-					writer.set(state, value);
-					return true;
 				}
-				break;
 			}
 		}
 		return false;

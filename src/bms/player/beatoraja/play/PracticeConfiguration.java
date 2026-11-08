@@ -2,6 +2,7 @@ package bms.player.beatoraja.play;
 
 import java.io.*;
 import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
 import java.util.function.*;
 import java.util.logging.Logger;
 
@@ -9,20 +10,10 @@ import bms.model.BMSModel;
 import bms.model.Mode;
 import bms.model.TimeLine;
 import bms.player.beatoraja.Config;
-import bms.player.beatoraja.MainState;
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
 import bms.player.beatoraja.input.KeyBoardInputProcesseor.ControlKeys;
-import bms.player.beatoraja.skin.SkinNoteDistributionGraph;
-import bms.player.beatoraja.skin.Skin.SkinObjectRenderer;
 
-import com.badlogic.gdx.Gdx;
-import com.badlogic.gdx.graphics.Color;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
-import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator.FreeTypeFontParameter;
 import com.badlogic.gdx.math.MathUtils;
-import com.badlogic.gdx.math.Rectangle;
-import com.badlogic.gdx.utils.GdxRuntimeException;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.SerializationException;
 
@@ -33,11 +24,11 @@ import com.badlogic.gdx.utils.SerializationException;
  */
 public final class PracticeConfiguration {
 
-
-	private BitmapFont titlefont;
+	public static final PracticeElement[] elements = PracticeElement.values();
 
 	private int cursorpos = 0;
-	private long presscount = 0;
+	private int itemOffset;
+	private int visibleItemCount = 10;
 
 	private BMSModel model;
 
@@ -46,35 +37,31 @@ public final class PracticeConfiguration {
 	private static final String[] RANDOM = { "NORMAL", "MIRROR", "RANDOM", "R-RANDOM", "S-RANDOM", "SPIRAL", "H-RANDOM",
 			"ALL-SCR", "RANDOM-EX", "S-RANDOM-EX" };
 	private static final String[] DPRANDOM = { "NORMAL", "FLIP" };
+	private static final String[] GRAPHTYPESTR = {"NOTETYPE", "JUDGE", "EARLYLATE"};
 
 	private PracticeProperty property = new PracticeProperty();
+	private final String[] cachedValues = new String[elements.length];
+	private final String[] cachedTexts = new String[elements.length];
+	private boolean textCacheDirty = true;
 
 	public PracticeConfiguration() {
 		// TODO 描画位置、使用テキスト等をスキン定義できるように
 		// TODO スキン定義がない場合のデフォルト配置の定義
 	}
 
-	private SkinNoteDistributionGraph[] graph = { 
-			new SkinNoteDistributionGraph(SkinNoteDistributionGraph.TYPE_NORMAL, 500, 0, 0, 0, 0),
-			new SkinNoteDistributionGraph(SkinNoteDistributionGraph.TYPE_JUDGE, 500, 0, 0, 0, 0),
-			new SkinNoteDistributionGraph(SkinNoteDistributionGraph.TYPE_EARLYLATE, 500, 0, 0, 0, 0),
-	};
-	
-	private static final String[] GRAPHTYPESTR = {"NOTETYPE", "JUDGE", "EARLYLATE"};
-
-	public static final PracticeElement[] elements = PracticeElement.values();
+	private PracticeModeControls controls = new PracticeModeControls();
 
 	public void create(BMSModel model, Config config) {
+		cursorpos = 0;
+		itemOffset = 0;
+		controls.initialize(config);
+		property = new PracticeProperty();
 		property.judgerank = model.getJudgerank();
 		property.endtime = model.getLastTime() + 1000;
 		Path p = Paths.get("practice/" + model.getSHA256() + ".json");
-		if (Files.exists(p)) {
-			Json json = new Json();
-			try {
-				property = json.fromJson(PracticeProperty.class, new FileReader(p.toFile()));
-			} catch (FileNotFoundException | SerializationException e) {
-				e.printStackTrace();
-			}
+		PracticeProperty loadedProperty = loadPracticeProperty(p);
+		if (loadedProperty != null) {
+			property = loadedProperty;
 		}
 
 		if(property.gaugecategory == null) {
@@ -84,19 +71,23 @@ public final class PracticeConfiguration {
 		if(property.total == 0) {
 			property.total = model.getTotal();
 		}
-		try {
-			FreeTypeFontGenerator generator = new FreeTypeFontGenerator(
-					Gdx.files.internal(config.getSystemfontpath()));
-			FreeTypeFontParameter parameter = new FreeTypeFontParameter();
-			parameter.size = 18;
-			titlefont = generator.generateFont(parameter);
-			generator.dispose();
-		} catch (GdxRuntimeException e) {
-			Logger.getGlobal().warning("Practice Font読み込み失敗");
+		invalidateTextCache();
+	}
+
+	static PracticeProperty loadPracticeProperty(Path path) {
+		if (!Files.isRegularFile(path)) {
+			return null;
 		}
-		
-		for(int i = 0; i < graph.length; i++) {
-			graph[i].setDestination(0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 0, 0, new int[0]);
+		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+			Json json = new Json();
+			PracticeProperty loadedProperty = json.fromJson(PracticeProperty.class, reader);
+			if (loadedProperty == null) {
+				Logger.getGlobal().warning("プラクティス設定がnullです : " + path);
+			}
+			return loadedProperty;
+		} catch (IOException | SerializationException e) {
+			Logger.getGlobal().warning("プラクティス設定の読み込み失敗 : " + path + " : " + e.getMessage());
+			return null;
 		}
 	}
 
@@ -118,6 +109,152 @@ public final class PracticeConfiguration {
 		return property;
 	}
 
+	/**
+	 * Configures how many Practice settings are exposed through the skin slots.
+	 */
+	public void setVisibleItemCount(int visibleItemCount) {
+		this.visibleItemCount = Math.max(1, Math.min(visibleItemCount, elements.length));
+		ensureCursorVisible();
+	}
+
+	public String getVisibleItemText(int index) {
+		PracticeElement element = getVisibleElement(index);
+		return element != null ? getCachedText(element) : "";
+	}
+
+	public String getVisibleItemLabel(int index) {
+		PracticeElement element = getVisibleElement(index);
+		return element != null ? element.label : "";
+	}
+
+	public String getVisibleItemValue(int index) {
+		PracticeElement element = getVisibleElement(index);
+		return element != null ? getCachedValue(element) : "";
+	}
+
+	String getItemLabel(int index) {
+		return index >= 0 && index < elements.length ? elements[index].label : "";
+	}
+
+	String getItemValue(int index) {
+		return index >= 0 && index < elements.length ? getCachedValue(elements[index]) : "";
+	}
+
+	private String getCachedValue(PracticeElement element) {
+		updateTextCache();
+		return cachedValues[element.ordinal()];
+	}
+
+	private String getCachedText(PracticeElement element) {
+		updateTextCache();
+		return cachedTexts[element.ordinal()];
+	}
+
+	private void invalidateTextCache() {
+		textCacheDirty = true;
+	}
+
+	private void updateTextCache() {
+		if (!textCacheDirty) {
+			return;
+		}
+		for (PracticeElement element : elements) {
+			String value = element.value.apply(property);
+			cachedValues[element.ordinal()] = value;
+			cachedTexts[element.ordinal()] = element.label + " : " + value;
+		}
+		textCacheDirty = false;
+	}
+
+	public boolean isVisibleItemAvailable(int index) {
+		return getVisibleElement(index) != null;
+	}
+
+	public boolean isVisibleItemSelected(int index) {
+		return getVisibleElement(index) == elements[cursorpos];
+	}
+
+	public void selectVisibleItem(int index) {
+		PracticeElement element = getVisibleElement(index);
+		if (element != null) {
+			cursorpos = element.ordinal();
+		}
+	}
+
+	public void changeVisibleItem(int index, boolean increment) {
+		PracticeElement element = getVisibleElement(index);
+		if (element != null) {
+			cursorpos = element.ordinal();
+			element.action.run(this, increment, false, false);
+			invalidateTextCache();
+		}
+	}
+
+	public float getItemScrollPosition() {
+		int maxOffset = getMaxItemOffset();
+		return maxOffset > 0 ? (float) itemOffset / maxOffset : 0;
+	}
+
+	public void setItemScrollPosition(float position) {
+		itemOffset = Math.round(MathUtils.clamp(position, 0, 1) * getMaxItemOffset());
+		PracticeElement firstVisibleElement = getVisibleElement(0);
+		if (firstVisibleElement != null) {
+			cursorpos = firstVisibleElement.ordinal();
+		}
+	}
+
+	private PracticeElement getVisibleElement(int index) {
+		if (index < 0 || index >= visibleItemCount || model == null) {
+			return null;
+		}
+		int availableIndex = itemOffset + index;
+		for (PracticeElement element : elements) {
+			if (element.optionAvailable.test(this) && availableIndex-- == 0) {
+				return element;
+			}
+		}
+		return null;
+	}
+
+	private int getAvailableItemCount() {
+		if (model == null) {
+			return 0;
+		}
+		int count = 0;
+		for (PracticeElement element : elements) {
+			if (element.optionAvailable.test(this)) {
+				count++;
+			}
+		}
+		return count;
+	}
+
+	private int getMaxItemOffset() {
+		return Math.max(0, getAvailableItemCount() - visibleItemCount);
+	}
+
+	private void ensureCursorVisible() {
+		if (model == null) {
+			return;
+		}
+		int selectedIndex = 0;
+		for (PracticeElement element : elements) {
+			if (!element.optionAvailable.test(this)) {
+				continue;
+			}
+			if (element.ordinal() == cursorpos) {
+				if (selectedIndex < itemOffset) {
+					itemOffset = selectedIndex;
+				} else if (selectedIndex >= itemOffset + visibleItemCount) {
+					itemOffset = selectedIndex - visibleItemCount + 1;
+				}
+				itemOffset = Math.min(itemOffset, getMaxItemOffset());
+				return;
+			}
+			selectedIndex++;
+		}
+	}
+
 	public GrooveGauge getGauge(BMSModel model) {
 		GrooveGauge gauge = GrooveGauge.create(model, property.gaugetype, property.gaugecategory);
 		gauge.setValue(property.startgauge);
@@ -125,160 +262,405 @@ public final class PracticeConfiguration {
 	}
 	
 	public void processInput(BMSPlayerInputProcessor input) {
-		if (input.isControlKeyPressed(ControlKeys.UP)) {
+		controls.readInput(input, model.getMode());
+		boolean turbo = controls.getInputTurbo();
+
+		int yTicks = controls.extractYTicks();
+		while (yTicks > 0) {
+			do {
+			cursorpos = (cursorpos + 1) % elements.length;
+			} while(!elements[cursorpos].optionAvailable.test(this));
+			--yTicks;
+		}
+		while (yTicks < 0) {
 			do {
 				cursorpos = (cursorpos + elements.length - 1) % elements.length;
-			} while(!elements[cursorpos].predicate.test(this));
+			} while(!elements[cursorpos].optionAvailable.test(this));
+			++yTicks;
 		}
-		if (input.isControlKeyPressed(ControlKeys.DOWN)) {
-			do {
-				cursorpos = (cursorpos + 1) % elements.length;
-			} while(!elements[cursorpos].predicate.test(this));
+		ensureCursorVisible();
+
+		int nonAnalogXTicks = controls.extractNonAnalogXTicks();
+		boolean valuesChanged = false;
+		if (nonAnalogXTicks != 0) {
+			boolean inc = nonAnalogXTicks > 0;
+			nonAnalogXTicks = Math.abs(nonAnalogXTicks);
+			for (int i = 0; i < nonAnalogXTicks ; ++i) {
+				elements[cursorpos].action.run(this, inc, false, turbo);
+			}
+			valuesChanged = true;
+		} 
+		int analogXTicks = controls.extractAnalogXTicks(elements[cursorpos].useFineAnalogTicks);
+		if (analogXTicks != 0) {
+			boolean inc = analogXTicks > 0;
+			analogXTicks = Math.abs(analogXTicks);
+			for (int i = 0; i < analogXTicks ; ++i) {
+				elements[cursorpos].action.run(this, inc, true, turbo);
+			}
+			valuesChanged = true;
 		}
-		if (input.getControlKeyState(ControlKeys.LEFT) && (presscount == 0 || presscount + 10 < System.currentTimeMillis())) {
-			if (presscount == 0) {
-				presscount = System.currentTimeMillis() + 500;
-			} else {
-				presscount = System.currentTimeMillis();
-			}
-			elements[cursorpos].action.accept(this, false);
-		} else if (input.getControlKeyState(ControlKeys.RIGHT) && (presscount == 0 || presscount + 10 < System.currentTimeMillis())) {
-			if (presscount == 0) {
-				presscount = System.currentTimeMillis() + 500;
-			} else {
-				presscount = System.currentTimeMillis();
-			}
-			elements[cursorpos].action.accept(this, true);
-		} else if (!(input.getControlKeyState(ControlKeys.LEFT) || input.getControlKeyState(ControlKeys.RIGHT))) {
-			presscount = 0;
+		if (valuesChanged) {
+			invalidateTextCache();
 		}
 	}
 
-	public void draw(Rectangle r, SkinObjectRenderer sprite, long time, MainState state) {
-		float x = r.x + r.width / 8;
-		float y = r.y + r.height * 7 / 8;
-		if(titlefont != null) {
-			for(int i = 0;i < elements.length;i++) {
-				if(elements[i].predicate.test(this)) {
-					sprite.draw(titlefont, elements[i].text.apply(property), x, y - 22 * i, cursorpos == i ? Color.YELLOW : Color.CYAN);
+	BMSModel getModel() {
+		return model;
+	}
+
+	int getCursorPosition() {
+		return cursorpos;
+	}
+
+	boolean isElementAvailable(int index) {
+		return elements[index].optionAvailable.test(this);
+	}
+
+	boolean isHorizontalInputMode() {
+		return controls.isHorizontalMode();
+	}
+
+	boolean isInputTurbo() {
+		return controls.getInputTurbo();
+	}
+
+	private final class PracticeModeControls {
+		private boolean inputUp;
+		private boolean inputDown;
+		private boolean inputTurbo;
+		private boolean inputLeft;
+		private boolean inputRight;
+
+		private long nextHoldTick;
+		private int nonAnalogYTicks;
+		private int nonAnalogXTicks;
+
+		private boolean turntableHorizontalModePrev;
+
+		private int inputXAnalogAmount;
+		private int inputYAnalogAmount;
+
+		private int scrollDurationLow;
+		private int scrollDurationHigh;
+		private int analogTicksPerScroll;
+
+		public void initialize(Config config) {
+	        scrollDurationLow = config.getScrollDurationLow();
+	        scrollDurationHigh = config.getScrollDurationHigh();
+        	analogTicksPerScroll = config.getAnalogTicksPerScroll();
+	    }
+
+		public void readInput(BMSPlayerInputProcessor input, Mode mode) {
+			final boolean inputUpPrev = inputUp;
+			final boolean inputDownPrev = inputDown;
+			final boolean inputLeftPrev = inputLeft;
+			final boolean inputRightPrev = inputRight;
+
+			if (mode == Mode.POPN_9K) {
+				//  1 3 5 7
+				// 0 2 4 6 8
+				inputUp = input.getControlKeyState(ControlKeys.UP) || input.getKeyState(1) || input.getKeyState(7);
+				inputDown = input.getControlKeyState(ControlKeys.DOWN) || input.getKeyState(2) || input.getKeyState(6);
+				inputLeft = input.getControlKeyState(ControlKeys.LEFT) || input.getKeyState(3);
+				inputRight = input.getControlKeyState(ControlKeys.RIGHT) || input.getKeyState(5);
+				inputTurbo = input.getKeyState(4);
+				inputXAnalogAmount = 0;
+				inputYAnalogAmount = 0;
+			} else {
+				//  1 3 5
+				// 0 2 4 6
+				inputUp = input.getControlKeyState(ControlKeys.UP);
+				inputDown = input.getControlKeyState(ControlKeys.DOWN);
+				inputLeft = input.getControlKeyState(ControlKeys.LEFT);
+				inputRight = input.getControlKeyState(ControlKeys.RIGHT);
+				inputTurbo = input.getKeyState(3);
+				boolean turntableHorizontalMode = input.getKeyState(1) || inputTurbo;
+
+				if (mode == Mode.BEAT_10K) {
+					//  1 3    8 10
+					// 0 2 4  7 9 11
+					inputUp = inputUp || input.getKeyState(8) || input.getKeyState(10);
+					inputDown = inputDown || input.getKeyState(9);
+					inputLeft = inputLeft || input.getKeyState(7);
+					inputRight = inputRight || input.getKeyState(11);
+				} else if (mode == Mode.BEAT_14K) {
+					//  1 3 5    10 12 14
+					// 0 2 4 6  9 11 13 15
+					inputUp = inputUp || input.getKeyState(10) || input.getKeyState(14);
+					inputDown = inputDown || input.getKeyState(11) || input.getKeyState(13);
+					inputLeft = inputLeft || input.getKeyState(9);
+					inputRight = inputRight || input.getKeyState(15);
+					inputTurbo = inputTurbo || input.getKeyState(12);
+				} else if (mode == Mode.KEYBOARD_24K || mode == Mode.KEYBOARD_24K_DOUBLE) {
+					//  1 3   6 8 10
+					// 0 2 4 5 7 9 11
+					inputUp = inputUp || input.getKeyState(6) || input.getKeyState(10);
+					inputDown = inputDown || input.getKeyState(7) || input.getKeyState(9);
+					inputLeft = inputLeft || input.getKeyState(5);
+					inputRight = inputRight || input.getKeyState(11);
+					inputTurbo = inputTurbo || input.getKeyState(8);
+				}
+
+				int turntableUpIndex1 = -1;
+				int turntableDownIndex1 = -1;
+				int turntableUpIndex2 = -1;
+				int turntableDownIndex2 = -1;
+				switch (mode) {
+					case BEAT_5K: {
+						turntableUpIndex1 = 6;
+						turntableDownIndex1 = 5;
+						break;
+					}
+					case BEAT_7K: {
+						turntableUpIndex1 = 8;
+						turntableDownIndex1 = 7;
+						break;
+					}
+					case BEAT_10K: {
+						turntableUpIndex1 = 6;
+						turntableDownIndex1 = 5;
+						turntableUpIndex2 = 13;
+						turntableDownIndex2 = 12;
+						break;
+					}
+					case BEAT_14K: {
+						turntableUpIndex1 = 8;
+						turntableDownIndex1 = 7;
+						turntableUpIndex2 = 17;
+						turntableDownIndex2 = 16;
+						break;
+					}
+					case KEYBOARD_24K: {
+						turntableUpIndex1 = 25;
+						turntableDownIndex1 = 24;
+						break;
+					}
+					case KEYBOARD_24K_DOUBLE: {
+						turntableUpIndex1 = 25;
+						turntableDownIndex1 = 24;
+						turntableUpIndex2 = 51;
+						turntableDownIndex2 = 50;
+						break;
+					}
+				}
+				final boolean resetAnalogInput = (turntableHorizontalMode != turntableHorizontalModePrev);
+				if (resetAnalogInput) {
+					inputXAnalogAmount = 0;
+					inputYAnalogAmount = 0;
+					turntableHorizontalModePrev = turntableHorizontalMode;
+				}
+				processTurntableInput(input, turntableUpIndex1, true, turntableHorizontalMode, resetAnalogInput);
+				processTurntableInput(input, turntableDownIndex1, false, turntableHorizontalMode, resetAnalogInput);
+				processTurntableInput(input, turntableUpIndex2, true, turntableHorizontalMode, resetAnalogInput);
+				processTurntableInput(input, turntableDownIndex2, false, turntableHorizontalMode, resetAnalogInput);
+			}
+
+			if (inputUpPrev != inputUp || inputDownPrev != inputDown || inputLeftPrev != inputLeft || inputRightPrev != inputRight) {
+				nextHoldTick = 0;
+			}
+			if (inputUp || inputDown || inputLeft || inputRight) {
+				long currentTimeMillis = System.currentTimeMillis();
+				if (nextHoldTick <= currentTimeMillis) {
+					if (nextHoldTick == 0) {
+						nextHoldTick = currentTimeMillis + scrollDurationLow;
+					} else {
+						nextHoldTick = currentTimeMillis + scrollDurationHigh;
+					}
+					if (inputRight) nonAnalogXTicks += 1;
+					else if (inputLeft) nonAnalogXTicks -= 1;
+					else if (inputDown) nonAnalogYTicks += 1;
+					else if (inputUp) nonAnalogYTicks -= 1;
 				}
 			}
+		}
 
-			if (state.resource.mediaLoadFinished()) {
-				sprite.draw(titlefont, "PRESS 1KEY TO PLAY", x, y - 276, Color.ORANGE);
+		private void processTurntableInput(BMSPlayerInputProcessor input, int index, boolean scratchUp, boolean turntableHorizontalMode, boolean resetAnalogInput) {
+			if (index == -1) return;
+			if (input.isAnalogInput(index)) {
+				if (resetAnalogInput) {
+					input.resetAnalogInput(index);
+				}
+				int analogDiff = input.getAnalogDiffAndReset(index, 200);
+				if (turntableHorizontalMode) {
+					inputXAnalogAmount += (scratchUp ? analogDiff : -analogDiff);
+				} else {
+					inputYAnalogAmount += (scratchUp ? -analogDiff : analogDiff);
+				}
+			} else {
+				if (turntableHorizontalMode) {
+					if (scratchUp) {
+						inputRight = inputRight || input.getKeyState(index);
+					} else {
+						inputLeft = inputLeft || input.getKeyState(index);
+					}
+				} else {
+					if (scratchUp) {
+						inputUp = inputUp || input.getKeyState(index);
+					} else {
+						inputDown = inputDown || input.getKeyState(index);
+					}
+				}
 			}
-			
-			String[] judge = {"PGREAT :","GREAT  :","GOOD   :", "BAD    :", "POOR   :", "KPOOR  :"};
-			for(int i = 0; i < 6; i++) {
-				sprite.draw(titlefont, String.format("%s %d %d %d",judge[i], state.getJudgeCount(i, true) + state.getJudgeCount(i, false), state.getJudgeCount(i, true), state.getJudgeCount(i, false)), x + 250, y - (i * 22), Color.WHITE);
-			}			
 		}
 
-		graph[property.graphtype].draw(sprite, time, state, new Rectangle(r.x, r.y, r.width, r.height / 4), property.starttime,
-				property.endtime, property.freq / 100f);
-	}
-	
-	public void dispose() {
-		if(titlefont != null) {
-			titlefont.dispose();
-			titlefont = null;
+		public int extractAnalogXTicks(boolean useFineAnalogTicks) {
+			int ticksPerScroll = useFineAnalogTicks ? 1 : analogTicksPerScroll;
+			int actualTicks = controls.inputXAnalogAmount / ticksPerScroll;
+			controls.inputXAnalogAmount %= ticksPerScroll; // Note: -15 % 12 = -3
+			return actualTicks;
 		}
+
+		public int extractNonAnalogXTicks() {
+			int actualTicks = nonAnalogXTicks;
+			nonAnalogXTicks = 0;
+			return actualTicks;
+		}
+
+		public int extractYTicks() {
+			int actualTicks = controls.inputYAnalogAmount / analogTicksPerScroll;
+			controls.inputYAnalogAmount %= analogTicksPerScroll; // Note: -15 % 12 = -3
+			actualTicks += nonAnalogYTicks;
+			nonAnalogYTicks = 0;
+			return actualTicks;
+		}
+
+		public boolean getInputTurbo() {
+			return inputTurbo;
+		}
+
+		public boolean isHorizontalMode() {
+			return turntableHorizontalModePrev;
+		}
+	}
+
+	private static int roundDownTo(int value, int base) {
+		return value/base*base;
+	}
+
+	@FunctionalInterface
+	interface PracticeAction {
+		void run(PracticeConfiguration practice, boolean inc, boolean isAnalog, boolean turboSpeed);
 	}
 
 	enum PracticeElement {
 
-		STARTTIME((practice, inc) -> {
+		STARTTIME((practice, inc, isAnalog, turboSpeed) -> {
 			final TimeLine[] tl = practice.model.getAllTimeLines();
 			final PracticeProperty property = practice.property;
-			if(inc) {
-				if (property.starttime + 2000 <= tl[tl.length - 1].getTime()) {
-					property.starttime += 100;
-				}
-				if (property.starttime + 900 >= property.endtime) {
-					property.endtime += 100;
-				}
+			final int maxStartTime = roundDownTo(tl[tl.length - 1].getTime() - 2000, 100);
+			final int minStartTime = 0;
+			int change = turboSpeed ? (isAnalog ? 1000 : 2500) : 100;
+			if (inc) {
+				property.starttime = Math.min(property.starttime + change, maxStartTime);
+				property.endtime = Math.max(property.endtime, property.starttime + 1000);
 			} else {
-				if (property.starttime >= 100) {
-					property.starttime -= 100;
-				}
+				property.starttime = Math.max(property.starttime - change, minStartTime);
 			}
-		}, property -> String.format("START TIME : %2d:%02d.%1d", property.starttime / 60000,
+		}, true, "START TIME", property -> String.format("%2d:%02d.%1d", property.starttime / 60000,
 				(property.starttime / 1000) % 60, (property.starttime / 100) % 10)),
-		ENDTIME((practice, inc) -> {
+		ENDTIME((practice, inc, isAnalog, turboSpeed) -> {
 			final TimeLine[] tl = practice.model.getAllTimeLines();
 			final PracticeProperty property = practice.property;
-			if(inc) {
-				if (property.endtime <= tl[tl.length - 1].getTime() + 1000) {
-					property.endtime += 100;
-				}
+			final int maxEndTime = roundDownTo(tl[tl.length - 1].getTime() + 1000, 100);
+			final int minEndTime = roundDownTo(property.starttime + 1000, 100);
+			int change = turboSpeed ? (isAnalog ? 1000 : 2500) : 100;
+			if (inc) {
+				property.endtime = Math.min(property.endtime + change, maxEndTime);
 			} else {
-				if (property.endtime > property.starttime + 1000) {
-					property.endtime -= 100;
-				}
+				property.endtime = Math.max(property.endtime - change, minEndTime);
 			}
-		}, property -> String.format("END TIME : %2d:%02d.%1d", property.endtime / 60000,
+		}, true, "END TIME", property -> String.format("%2d:%02d.%1d", property.endtime / 60000,
 				(property.endtime / 1000) % 60, (property.endtime / 100) % 10)),
-		GAUGETYPE((practice, inc) -> {
+		GAUGETYPE((practice, inc, isAnalog, turboSpeed) -> {
 			final PracticeProperty property = practice.property;
 			property.gaugetype = (property.gaugetype + (inc ? 1 : 8)) % 9;
 			if ((practice.model.getMode() == Mode.POPN_5K || practice.model.getMode() == Mode.POPN_9K) && property.gaugetype >= 3 && property.startgauge > 100) {
 				property.startgauge = 100;
 			}
-		}, property -> "GAUGE TYPE : " + GAUGE[property.gaugetype]),
-		GAUGECATEGORY((practice, inc) -> {
+		}, false, "GAUGE TYPE", property -> GAUGE[property.gaugetype]),
+		GAUGECATEGORY((practice, inc, isAnalog, turboSpeed) -> {
 			final PracticeProperty property = practice.property;
-			GaugeProperty[] cateories = GaugeProperty.values();
-			for(int i = 0;i < cateories.length;i++) {
-				if(property.gaugecategory == cateories[i]) {
-					property.gaugecategory = cateories[(i + (inc ? 1 : (cateories.length - 1))) % cateories.length];
+			GaugeProperty[] categories = GaugeProperty.values();
+			for(int i = 0;i < categories.length;i++) {
+				if(property.gaugecategory == categories[i]) {
+					property.gaugecategory = categories[(i + (inc ? 1 : (categories.length - 1))) % categories.length];
 					break;
 				}
 			}
 			property.startgauge = (int) property.gaugecategory.values[property.gaugetype].init;
-		}, property -> "GAUGE CATEGORY : " + property.gaugecategory.name()),
-		GAUGEVALUE((practice, inc) -> {
+		}, false, "GAUGE CATEGORY", property -> property.gaugecategory.name()),
+		GAUGEVALUE((practice, inc, isAnalog, turboSpeed) -> {
 			final PracticeProperty property = practice.property;
-			property.startgauge = MathUtils.clamp(property.startgauge + (inc ? 1 : -1), 1, (int)property.gaugecategory.values[property.gaugetype].max);
-		}, property -> "GAUGE VALUE : " + property.startgauge),
-		JUDGERANK((practice, inc) -> {
-			practice.property.judgerank = MathUtils.clamp(practice.property.judgerank + (inc ? 1 : -1), 1, 400);
-		}, property -> "JUDGERANK : " + property.judgerank),
-		TOTAL((practice, inc) -> {
-			practice.property.total = MathUtils.clamp(practice.property.total + (inc ? 10 : -10), 20, 5000);
-		}, property -> "TOTAL : " + (int)property.total),
-		FREQ((practice, inc) -> {
-			practice.property.freq = MathUtils.clamp(practice.property.freq + (inc ? 5 : -5), 50, 200);
-		}, property -> "FREQUENCY : " + property.freq),
-		GRAPHTYPE((practice, inc) -> {
+			int change = turboSpeed ? 10 : 1;
+			int maxValue = (int)property.gaugecategory.values[property.gaugetype].max;
+			if (inc && turboSpeed && property.startgauge == 1) {
+				property.startgauge = Math.min(change, maxValue);
+			} else {
+				property.startgauge = MathUtils.clamp(property.startgauge + (inc ? change : -change), 1, maxValue);
+			}
+		}, true, "GAUGE VALUE", property -> Integer.toString(property.startgauge)),
+		JUDGERANK((practice, inc, isAnalog, turboSpeed) -> {
+			final PracticeProperty property = practice.property;
+			int change = turboSpeed ? 25 : 1;
+			if (inc && turboSpeed && property.judgerank == 1) {
+				property.judgerank = Math.min(change, 400);
+			} else {
+				property.judgerank = MathUtils.clamp(property.judgerank + (inc ? change : -change), 1, 400);
+			}
+		}, true, "JUDGERANK", property -> Integer.toString(property.judgerank)),
+		TOTAL((practice, inc, isAnalog, turboSpeed) -> {
+			int change = turboSpeed ? 25 : 5;
+			if (isAnalog) {
+				change = turboSpeed ? 20 : 1;
+			}
+			practice.property.total = MathUtils.clamp(practice.property.total + (inc ? change : -change), 10, 5000);
+		}, true, "TOTAL", property -> Integer.toString((int) property.total)),
+		FREQ((practice, inc, isAnalog, turboSpeed) -> {
+			int change = turboSpeed ? 25 : 5;
+			if (isAnalog) {
+				change = turboSpeed ? 10 : 1;
+			}
+			practice.property.freq = MathUtils.clamp(practice.property.freq + (inc ? change : -change), 50, 200);
+		}, true, "FREQUENCY", property -> Integer.toString(property.freq)),
+		GRAPHTYPE((practice, inc, isAnalog, turboSpeed) -> {
 			practice.property.graphtype = (practice.property.graphtype + (inc ? 1 : 2)) % 3;
-		}, property -> "GRAPHTYPE : " + GRAPHTYPESTR[property.graphtype]),
-		OPTION1P((practice, inc) -> {
+		}, false, "GRAPHTYPE", property -> GRAPHTYPESTR[property.graphtype]),
+		OPTION1P((practice, inc, isAnalog, turboSpeed) -> {
 			final int options = (practice.model.getMode() == Mode.POPN_5K || practice.model.getMode() == Mode.POPN_9K ? 7 : 10);
 			practice.property.random = (practice.property.random + (inc ? 1 : (options -1))) % options;
-		}, property -> "OPTION-1P : " + RANDOM[property.random]),
-		OPTION2P((practice, inc) -> {
+		}, false, "OPTION-1P", property -> RANDOM[property.random]),
+		OPTION2P((practice, inc, isAnalog, turboSpeed) -> {
 			practice.property.random2 = (practice.property.random2 + (inc ? 1 : 9)) % 10;
-		}, property -> "OPTION-2P : " + RANDOM[property.random2], practice -> practice.model.getMode().player == 2),
-		OPTIONDP((practice, inc) -> {
+		}, false, "OPTION-2P", property -> RANDOM[property.random2], practice -> practice.model.getMode().player == 2),
+		OPTIONDP((practice, inc, isAnalog, turboSpeed) -> {
 			practice.property.doubleop = (practice.property.doubleop + 1) % 2;
-		}, property -> "OPTION-DP : " + DPRANDOM[property.doubleop], practice -> practice.model.getMode().player == 2);
+		}, false, "OPTION-DP", property -> DPRANDOM[property.doubleop], practice -> practice.model.getMode().player == 2);
 
-		public final BiConsumer<PracticeConfiguration, Boolean> action;
+		public final PracticeAction action;
 
-		public final Function<PracticeProperty, String> text;
+		public final boolean useFineAnalogTicks;
 
-		public final Predicate<PracticeConfiguration> predicate;
+		public final String label;
 
-		private PracticeElement(BiConsumer<PracticeConfiguration, Boolean> action, Function<PracticeProperty, String> text) {
-			this(action, text, property -> true);
+		public final Function<PracticeProperty, String> value;
+
+		public final Predicate<PracticeConfiguration> optionAvailable;
+
+		private PracticeElement(PracticeAction action, boolean useFineAnalogTicks, String label,
+				Function<PracticeProperty, String> value) {
+			this(action, useFineAnalogTicks, label, value, property -> true);
 		}
 
-		private PracticeElement(BiConsumer<PracticeConfiguration, Boolean> action, Function<PracticeProperty, String> text, Predicate<PracticeConfiguration> predicate) {
+		private PracticeElement(PracticeAction action, boolean useFineAnalogTicks, String label,
+				Function<PracticeProperty, String> value, Predicate<PracticeConfiguration> optionAvailable) {
 			this.action = action;
-			this.text = text;
-			this.predicate = predicate;
+			this.useFineAnalogTicks = useFineAnalogTicks;
+			this.label = label;
+			this.value = value;
+			this.optionAvailable = optionAvailable;
 		}
 	}
+
 	/**
 	 * プラクティスの各種設定値
 	 *

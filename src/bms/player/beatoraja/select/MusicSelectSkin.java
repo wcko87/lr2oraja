@@ -18,9 +18,7 @@ public class MusicSelectSkin extends Skin {
 	 * クリック可能なBarのindex
 	 */
 	private int[] clickableBar = new int[0];
-
-	public SkinText searchText;
-	private Rectangle search;
+	private Rectangle searchTextRegion = new Rectangle(0, 0, 1, 1);
 
 	public MusicSelectSkin(SkinHeader header) {
 		super(header);
@@ -41,13 +39,15 @@ public class MusicSelectSkin extends Skin {
 	public void setCenterBar(int centerBar) {
 		this.centerBar = centerBar;
 	}
-	
+
 	public Rectangle getSearchTextRegion() {
-		return search;
+		return searchTextRegion;
 	}
 
-	public void setSearchTextRegion(Rectangle r) {
-		search = r;
+	public void setSearchTextRegion(Rectangle searchTextRegion) {
+		if (searchTextRegion != null) {
+			this.searchTextRegion = searchTextRegion;
+		}
 	}
 
 }

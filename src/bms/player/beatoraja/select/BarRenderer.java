@@ -89,7 +89,7 @@ public final class BarRenderer {
 
 			Rectangle r = baro.getBarImages(on, i).getDestination(select.timer.getNowTime(), select);
 			if (r != null) {
-				if (r != null && r.x <= x && r.x + r.width >= x && r.y <= y && r.y + r.height >= y) {
+				if (r.x <= x && r.x + r.width >= x && r.y <= y && r.y + r.height >= y) {
 					if (button == 0) {
 						select.select(sd);
 					} else {
@@ -111,7 +111,7 @@ public final class BarRenderer {
 		}
 		this.time = time;		
 		final long timeMillis = System.currentTimeMillis();
-		boolean applyMovement = duration != 0 && duration > timeMillis;
+		final boolean applyMovement = duration != 0 && duration > timeMillis;
 		float angleLerp = 0;
 		if (applyMovement) {
 			angleLerp = angle < 0 ? ((float) (timeMillis - duration)) / angle
@@ -206,45 +206,37 @@ public final class BarRenderer {
 
 		if (bartextupdate) {
 			bartextupdate = false;
-			
-			bartextCharset.clear();
-			for (Bar song : manager.currentsongs) {
-				for (char c : song.getTitle().toCharArray()) {
-					bartextCharset.add(c);
+
+			boolean requiresFontPreparation = false;
+			for (int index = 0; index < SkinBar.BARTEXT_COUNT; index++) {
+				SkinText text = baro.getText(index);
+				if (text != null && text.requiresFontPreparation()) {
+					requiresFontPreparation = true;
+					break;
 				}
 			}
-			char[] chars = new char[bartextCharset.size];
-			int i = 0;
-			for (IntSetIterator iterator = bartextCharset.iterator();iterator.hasNext;) {
-				chars[i++] = (char) iterator.next();
-			}
-//			Arrays.fill(bartextCharset, false);
-//			int charCount = 0;
-//			for (Bar song : manager.currentsongs) {
-//				final String title = song.getTitle();
-//				for(int index = title.length() - 1;index >= 0;index--) {
-//					final char c = title.charAt(index);
-//					if(!bartextCharset[c]) {
-//						bartextCharset[c] = true;
-//						charCount++;
-//					}
-//				}
-//			}
-//			char[] chars = new char[charCount];
-//			int count = 0;
-//			for (char c = (char) (bartextCharset.length - 1) ;;c--) {
-//				if(bartextCharset[c]) {
-//					chars[count++] = c;
-//				}
-//				if(c == 0) {
-//					break;
-//				}
-//			}
+			if (requiresFontPreparation) {
+				bartextCharset.clear();
+				for (Bar song : manager.currentsongs) {
+					final String title = song.getTitle();
+					for (int index = 0; index < title.length();) {
+						final int codePoint = title.codePointAt(index);
+						bartextCharset.add(codePoint);
+						index += Character.charCount(codePoint);
+					}
+				}
+				StringBuilder chars = new StringBuilder(bartextCharset.size);
+				for (IntSetIterator iterator = bartextCharset.iterator();iterator.hasNext;) {
+					chars.appendCodePoint(iterator.next());
+				}
 			
-			for(int index = 0;index < SkinBar.BARTEXT_COUNT;index++) {
-				if(baro.getText(index) != null) {
-					baro.getText(index).prepareFont(String.valueOf(chars));
-				}				
+				for(int index = 0;index < SkinBar.BARTEXT_COUNT;index++) {
+					SkinText text = baro.getText(index);
+					if(text != null && text.requiresFontPreparation()) {
+						text.prepareFont(chars.toString());
+					}
+				}
+				baro.clearTextLayoutCache();
 			}
 		}
 
@@ -254,7 +246,7 @@ public final class BarRenderer {
 			manager.loader = null;
 		}
 
-		// draw song bar
+		// bar image
 		for (int i = 0; i < barlength; i++) {
 			final BarArea ba = bararea[i];
 			boolean on = (i == skin.getCenterBar());
@@ -274,12 +266,12 @@ public final class BarRenderer {
 			}
 		}
 
+		// folder graph
 		for (int i = 0; i < barlength; i++) {
 			final BarArea ba = bararea[i];
 			if(ba.value == -1) {
 				continue;
 			}
-			// folder graph
 			if (ba.sd instanceof DirectoryBar) {
 				final SkinDistributionGraph graph = baro.getGraph();
 				if (graph != null && graph.draw) {
@@ -288,18 +280,16 @@ public final class BarRenderer {
 			}
 		}
 
+		// bar title
 		for (int i = 0; i < barlength; i++) {
 			final BarArea ba = bararea[i];
 			if(ba.value == -1) {
 				continue;
 			}
-			final SkinText text = baro.getText(ba.text);
-			if(text != null) {
-				text.setText(ba.sd.getTitle());
-				text.draw(sprite, ba.x, ba.y);				
-			}
+			baro.drawText(sprite, ba.text, ba.sd.getTitle(), ba.x, ba.y);
 		}
 
+		// bar trophy
 		for (int i = 0; i < barlength; i++) {
 			final BarArea ba = bararea[i];
 			if(ba.value == -1) {
@@ -322,6 +312,7 @@ public final class BarRenderer {
 			}
 		}
 
+		// bar lamp
 		for (int i = 0; i < barlength; i++) {
 			final BarArea ba = bararea[i];
 			if(ba.value == -1) {
@@ -345,6 +336,7 @@ public final class BarRenderer {
 			}
 		}
 
+		// bar level
 		for (int i = 0; i < barlength; i++) {
 			final BarArea ba = bararea[i];
 			if(ba.value == -1) {
@@ -385,13 +377,13 @@ public final class BarRenderer {
 				ln = select.main.getPlayerConfig().getLnmode();
 			}
 			if((flag & SongData.FEATURE_LONGNOTE) != 0) {
-				ln = ln > 0 ? ln : 0;
+				ln = Math.max(ln, 0);
 			}
 			if((flag & SongData.FEATURE_CHARGENOTE) != 0) {
-				ln = ln > 1 ? ln : 1;
+				ln = Math.max(ln, 1);
 			}
 			if((flag & SongData.FEATURE_HELLCHARGENOTE) != 0) {
-				ln = ln > 2 ? ln : 2;
+				ln = Math.max(ln, 2);
 			}
 
 			if(ln >= 0) {

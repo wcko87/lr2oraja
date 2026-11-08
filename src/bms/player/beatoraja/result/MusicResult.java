@@ -16,6 +16,7 @@ import com.badlogic.gdx.utils.FloatArray;
 import bms.model.*;
 import bms.player.beatoraja.*;
 import bms.player.beatoraja.MainController.IRStatus;
+import bms.player.beatoraja.MainState.MainStateType;
 import bms.player.beatoraja.input.BMSPlayerInputProcessor;
 import bms.player.beatoraja.ir.*;
 import bms.player.beatoraja.play.GrooveGauge;
@@ -35,7 +36,7 @@ public class MusicResult extends AbstractResult {
 	private List<IRSendStatus> irSendStatus = new ArrayList<IRSendStatus>();
 
 	public MusicResult(MainController main) {
-		super(main);
+		super(main, MainStateType.RESULT);
 	}
 
 	public void create() {
@@ -84,16 +85,15 @@ public class MusicResult extends AbstractResult {
         	for(IRStatus irc : ir) {
     			boolean send = resource.isUpdateScore();
     			switch(irc.config.getIrsend()) {
-    			case IRConfig.IR_SEND_ALWAYS:
-    				break;
-    			case IRConfig.IR_SEND_COMPLETE_SONG:
-    				FloatArray gauge = resource.getGauge()[resource.getGrooveGauge().getType()];
-    				send &= gauge.get(gauge.size - 1) > 0.0;
-    				break;
-    			case IRConfig.IR_SEND_UPDATE_SCORE:
-    				send &= (newscore.getExscore() > oldscore.getExscore() || newscore.getClear() > oldscore.getClear()
-    						|| newscore.getCombo() > oldscore.getCombo() || newscore.getMinbp() < oldscore.getMinbp());
-    				break;
+	    			case IRConfig.IR_SEND_ALWAYS -> {}
+	    			case IRConfig.IR_SEND_COMPLETE_SONG -> {
+	    				FloatArray gauge = resource.getGauge()[resource.getGrooveGauge().getType()];
+	    				send &= gauge.get(gauge.size - 1) > 0.0;
+	    			}
+	    			case IRConfig.IR_SEND_UPDATE_SCORE -> {
+	    				send &= (newscore.getExscore() > oldscore.getExscore() || newscore.getClear() > oldscore.getClear()
+	    						|| newscore.getCombo() > oldscore.getCombo() || newscore.getMinbp() < oldscore.getMinbp());
+	    			}
     			}
     			
     			if(send) {
@@ -130,7 +130,7 @@ public class MusicResult extends AbstractResult {
 					try {
 						IRResponse<bms.player.beatoraja.ir.IRScoreData[]> response = ir[0].connection.getPlayData(null, new IRChartData(resource.getSongdata()));
 						if(response.isSucceeded()) {
-							ranking.updateScore(response.getData(), newscore.getExscore() > oldscore.getExscore() ? newscore : oldscore);
+							ranking.updateScore(ir[0].player, main.getRivalDataAccessor(), response.getData(), newscore.getExscore() > oldscore.getExscore() ? newscore : oldscore);
 							rankingOffset = ranking.getRank() > 10 ? ranking.getRank() - 5 : 0;
 							Logger.getGlobal().info("IRからのスコア取得成功 : " + response.getMessage());
 						} else {
@@ -373,6 +373,7 @@ public class MusicResult extends AbstractResult {
 			if (cscore == null) {
 				cscore = new ScoreData();
 				cscore.setMinbp(0);
+				cscore.setPlaytime(0);
 				int notes = 0;
 				for (BMSModel mo : resource.getCourseBMSModels()) {
 					notes += mo.getTotalNotes();
@@ -399,6 +400,7 @@ public class MusicResult extends AbstractResult {
 			cscore.setLms(cscore.getLms() + newscore.getLms());
 			cscore.setMinbp(cscore.getMinbp() + newscore.getMinbp());
 			cscore.setTotalDuration(cscore.getTotalDuration() + newscore.getTotalDuration());
+			cscore.addPlaytime(newscore.getPlaytime());
 			if (resource.getGauge()[resource.getGrooveGauge().getType()].get(resource.getGauge()[resource.getGrooveGauge().getType()].size - 1) > 0) {
 				if (resource.getAssist() > 0) {
 					if(resource.getAssist() == 1 && cscore.getClear() != ClearType.AssistEasy.id) cscore.setClear(ClearType.LightAssistEasy.id);
@@ -451,24 +453,8 @@ public class MusicResult extends AbstractResult {
 	}
 
 	public int getJudgeCount(int judge, boolean fast) {
-		ScoreData score = resource.getScoreData();
-		if (score != null) {
-			switch (judge) {
-			case 0:
-				return fast ? score.getEpg() : score.getLpg();
-			case 1:
-				return fast ? score.getEgr() : score.getLgr();
-			case 2:
-				return fast ? score.getEgd() : score.getLgd();
-			case 3:
-				return fast ? score.getEbd() : score.getLbd();
-			case 4:
-				return fast ? score.getEpr() : score.getLpr();
-			case 5:
-				return fast ? score.getEms() : score.getLms();
-			}
-		}
-		return 0;
+		final ScoreData score = resource.getScoreData();
+		return score != null ? score.getJudgeCount(judge, fast) : 0;
 	}
 
 	@Override

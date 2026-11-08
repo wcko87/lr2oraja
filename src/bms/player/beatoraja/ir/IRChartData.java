@@ -4,7 +4,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 import bms.model.BMSModel;
+import bms.model.BMSModelUtils;
+import bms.model.LongNote;
 import bms.model.Mode;
+import bms.model.Note;
+import bms.model.TimeLine;
 import bms.player.beatoraja.song.SongData;
 
 /**
@@ -70,6 +74,7 @@ public class IRChartData {
 	 * 判定幅(bmsonのjudgerank表記)
 	 */
 	public final int judge;
+
 	/**
 	 * 最小BPM
 	 */
@@ -110,8 +115,64 @@ public class IRChartData {
 	 * ストップシーケンスが存在するかどうか
 	 */
 	public final boolean hasStop;
+	/**
+	 * 譜面の長さ(ms)
+	 */
+	public final int length;
+	public final int normalNotes;
+	public final int scratchNotes;
+	public final int longNotes;
+	public final int longScratchNotes;
+	public final boolean hasScroll;
+	public final boolean hasSpeed;
+	public final boolean hasBga;
+	public final boolean hasChartInfo;
 	
 	public final Map<String, String> values = new HashMap<String, String>();
+
+	public IRChartData(String md5, String sha256, String title, String subtitle, String genre, String artist,
+			String subartist, String url, String appendurl, int level, int total, Mode mode, int lntype, int judge,
+			int minbpm, int maxbpm, int notes, boolean hasUndefinedLN, boolean hasLN, boolean hasCN, boolean hasHCN,
+			boolean hasMine, boolean hasRandom, boolean hasStop, int length, int normalNotes, int scratchNotes,
+			int longNotes, int longScratchNotes, boolean hasScroll, boolean hasSpeed, boolean hasBga,
+			boolean hasChartInfo, Map<String, String> values) {
+		this.md5 = md5;
+		this.sha256 = sha256;
+		this.title = title;
+		this.subtitle = subtitle;
+		this.genre = genre;
+		this.artist = artist;
+		this.subartist = subartist;
+		this.url = url;
+		this.appendurl = appendurl;
+		this.level = level;
+		this.total = total;
+		this.mode = mode;
+		this.lntype = lntype;
+		this.judge = judge;
+		this.minbpm = minbpm;
+		this.maxbpm = maxbpm;
+		this.notes = notes;
+		this.hasUndefinedLN = hasUndefinedLN;
+		this.hasLN = hasLN;
+		this.hasCN = hasCN;
+		this.hasHCN = hasHCN;
+		this.hasMine = hasMine;
+		this.hasRandom = hasRandom;
+		this.hasStop = hasStop;
+		this.length = length;
+		this.normalNotes = normalNotes;
+		this.scratchNotes = scratchNotes;
+		this.longNotes = longNotes;
+		this.longScratchNotes = longScratchNotes;
+		this.hasScroll = hasScroll;
+		this.hasSpeed = hasSpeed;
+		this.hasBga = hasBga;
+		this.hasChartInfo = hasChartInfo;
+		if(values != null) {
+			this.values.putAll(values);
+		}
+	}
 	
 	public IRChartData(SongData song) {
 		this(song, song.getBMSModel() != null ? song.getBMSModel().getLntype() : 0);
@@ -144,9 +205,44 @@ public class IRChartData {
 		this.hasRandom = song.hasRandomSequence();
 		this.hasStop = song.isBpmstop();
 		this.lntype = lntype;
+		this.length = song.getLength();
+		this.normalNotes = model != null ? BMSModelUtils.getTotalNotes(model, BMSModelUtils.TOTALNOTES_KEY) : 0;
+		this.scratchNotes = model != null ? BMSModelUtils.getTotalNotes(model, BMSModelUtils.TOTALNOTES_SCRATCH) : 0;
+		final int[] longNoteCounts = model != null ? countLongNotes(model) : new int[] {0, 0};
+		this.longNotes = longNoteCounts[0];
+		this.longScratchNotes = longNoteCounts[1];
+		this.hasScroll = song.hasScrollChange();
+		this.hasSpeed = song.getMinbpm() != song.getMaxbpm();
+		this.hasBga = song.hasBGA();
+		this.hasChartInfo = model != null;
 
 		if(model != null) {
 			values.putAll(model.getValues());			
 		}
+	}
+
+	/**
+	 * Counts long notes by their start objects only. CN and HCN end objects are
+	 * intentionally excluded so each long note is represented once.
+	 */
+	private static int[] countLongNotes(BMSModel model) {
+		int keyLongNotes = 0;
+		int scratchLongNotes = 0;
+
+		for (TimeLine timeline : model.getAllTimeLines()) {
+			for (int lane = 0; lane < model.getMode().key; lane++) {
+				Note note = timeline.getNote(lane);
+
+				if (note instanceof LongNote longNote && !longNote.isEnd()) {
+					if (model.getMode().isScratchKey(lane)) {
+						scratchLongNotes++;
+					} else {
+						keyLongNotes++;
+					}
+				}
+			}
+		}
+
+		return new int[] {keyLongNotes, scratchLongNotes};
 	}
 }

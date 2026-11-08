@@ -2,13 +2,14 @@ package bms.player.beatoraja.skin.json;
 
 import bms.player.beatoraja.play.SkinGauge;
 import bms.player.beatoraja.result.SkinGaugeGraphObject;
-import bms.player.beatoraja.select.MusicSelectSkin;
 import bms.player.beatoraja.select.SkinDistributionGraph;
 import bms.player.beatoraja.skin.*;
 import bms.player.beatoraja.skin.SkinObject.SkinOffset;
 import bms.player.beatoraja.skin.json.JSONSkinLoader.SourceData;
+import bms.player.beatoraja.skin.property.BooleanProperty;
 import bms.player.beatoraja.skin.property.StringProperty;
 import bms.player.beatoraja.skin.property.StringPropertyFactory;
+import bms.player.beatoraja.skin.property.StringWriter;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -44,8 +45,7 @@ public abstract class JsonSkinObjectLoader<S extends Skin> {
 				
 				if(data instanceof SkinSourceMovie) {
 					obj = new SkinImage((SkinSourceMovie)data);
-				} else if(data instanceof Texture) {
-					Texture tex = (Texture) data;
+				} else if(data instanceof Texture tex) {
 					if (img.len > 1) {
 						TextureRegion[] srcimg = getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx,
 								img.divy);
@@ -79,8 +79,7 @@ public abstract class JsonSkinObjectLoader<S extends Skin> {
 						if (img.id.equals(imgs.images[index])) {
 							Object data = loader.getSource(img.src, p);
 							
-							if(data instanceof Texture) {
-								Texture tex = (Texture) data;
+							if(data instanceof Texture tex) {
 								sources[index] = new SkinSourceImage(getSourceImage(tex, img.x, img.y, img.w, img.h, img.divx, img.divy),
 										img.timer, img.cycle);
 							} 
@@ -387,15 +386,7 @@ public abstract class JsonSkinObjectLoader<S extends Skin> {
 		// text
 		for (JsonSkin.Text text : sk.text) {
 			if (dst.id.equals(text.id)) {
-				if (text.ref == SkinProperty.STRING_SEARCHWORD) {
-					JsonSkin.Animation a = dst.dst[0];
-					Rectangle r = new Rectangle(a.x * ((float)loader.dstr.width / sk.w),
-							a.y * ((float)loader.dstr.height / sk.h), a.w * ((float)loader.dstr.width / sk.w),
-							a.h * ((float)loader.dstr.height / sk.h));
-					((MusicSelectSkin) skin).setSearchTextRegion(r);
-				} else {
-					obj = createText(text, p);
-				}
+				obj = createText(text, p);
 				return obj;
 			}
 		}
@@ -516,23 +507,16 @@ public abstract class JsonSkinObjectLoader<S extends Skin> {
 		
 		// gauge (playskin or resultskin only)
 		if (sk.gauge != null && dst.id.equals(sk.gauge.id)) {
-			int[][] indexmap = null;
-			switch(sk.gauge.nodes.length) {
-				case 4:
-					indexmap = new int[][]{{0,4,6,10,12,16,18,22,24,28,30,34},{1,5,7,11,13,17,19,23,25,29,31,35},{2,8,14,20,26,32},{3,9,15,21,27,33}};
-					break;
-				case 8:
-					indexmap = new int[][]{{12,16,18,22},{13,17,19,23},{14,20},{15,21},
+			int[][] indexmap = switch(sk.gauge.nodes.length) {
+				case 4 -> new int[][]{{0,4,6,10,12,16,18,22,24,28,30,34},{1,5,7,11,13,17,19,23,25,29,31,35},{2,8,14,20,26,32},{3,9,15,21,27,33}};
+				case 8 -> new int[][]{{12,16,18,22},{13,17,19,23},{14,20},{15,21},
 							{0,4,6,10,24,28,30,34},{1,5,7,11,25,29,31,35},{2,8,26,32},{3,9,27,33}};
-					break;
-				case 12:
-					indexmap = new int[][]{{12,18},{13,19},{14,20},{15,21},
+				case 12 -> new int[][]{{12,18},{13,19},{14,20},{15,21},
 							{0,6,24,30},{1,7,25,31},{2,8,26,32},{3,9,27,33},
 							{16,22}, {17,23}, {4, 10, 28, 34}, {5,11,29,35}};
-					break;
-				case 36:
-					break;
-			}
+				case 36 -> null;
+				default -> null;
+			};
 			TextureRegion[][] pgaugetex = new TextureRegion[36][];
 
 			int gaugelength = 0;
@@ -590,6 +574,7 @@ public abstract class JsonSkinObjectLoader<S extends Skin> {
 		final File imagefile = SkinLoader.getPath(p.getParent().toString() + "/" + data.path, loader.filemap);
 		if (imagefile.exists()) {
 			data.data = getTexture(imagefile.getPath());
+			loader.registerResource((Texture) data.data);
 		}
 		data.loaded = true;
 		
@@ -650,15 +635,35 @@ public abstract class JsonSkinObjectLoader<S extends Skin> {
 				}
 				if (path.toString().toLowerCase().endsWith(".fnt")) {
 					if (!loader.bitmapSourceMap.containsKey(font.id)) {
-						SkinTextBitmap.SkinTextBitmapSource source = new SkinTextBitmap.SkinTextBitmapSource(path, loader.usecim);
+						SkinTextBitmap.SkinTextBitmapSource.FallbackFont[] fallbackFonts =
+								new SkinTextBitmap.SkinTextBitmapSource.FallbackFont[font.fallback.length];
+						for (int i = 0; i < font.fallback.length; i++) {
+							if (font.fallback[i] == null || font.fallback[i].path == null) {
+								continue;
+							}
+							fallbackFonts[i] = new SkinTextBitmap.SkinTextBitmapSource.FallbackFont(
+									skinPath.getParent().resolve(font.fallback[i].path), font.fallback[i].type);
+						}
+						SkinTextBitmap.SkinTextBitmapSource source = new SkinTextBitmap.SkinTextBitmapSource(path, fallbackFonts, loader.usecim);
 						source.setType(font.type);
 						loader.bitmapSourceMap.put(font.id, source);
+						loader.registerResource(source);
 					}
 					skinText = new SkinTextBitmap(loader.bitmapSourceMap.get(font.id), text.size * ((float)loader.dstr.width / loader.sk.w), property);
 				} else {
-					skinText = new SkinTextFont(path.toString(), 0, text.size, 0, property);
+					String[] fallbackPaths = new String[font.fallback.length];
+					for (int i = 0; i < font.fallback.length; i++) {
+						if (font.fallback[i] == null || font.fallback[i].path == null) {
+							continue;
+						}
+						fallbackPaths[i] = skinPath.getParent().resolve(font.fallback[i].path).toString();
+					}
+					skinText = new SkinTextFont(loader.getFontSource(path.toString(), fallbackPaths), 0, text.size, 0, property);
 				}
 				skinText.setConstantText(text.constantText);
+				StringWriter writer = text.event != null ? text.event : StringPropertyFactory.getStringWriter(text.ref);
+				skinText.setWriter(writer);
+				skinText.setEditable(text.editable || (text.event == null && writer != null));
 				skinText.setAlign(text.align);
 				skinText.setWrapping(text.wrapping);
 				skinText.setOverflow(text.overflow);
@@ -721,13 +726,20 @@ public abstract class JsonSkinObjectLoader<S extends Skin> {
 				a.r = (a.r == Integer.MIN_VALUE ? prev.r : a.r);
 				a.g = (a.g == Integer.MIN_VALUE ? prev.g : a.g);
 				a.b = (a.b == Integer.MIN_VALUE ? prev.b : a.b);
+				a.clip_x = (a.clip_x == Integer.MIN_VALUE ? prev.clip_x : a.clip_x);
+				a.clip_y = (a.clip_y == Integer.MIN_VALUE ? prev.clip_y : a.clip_y);
+				a.clip_w = (a.clip_w == Integer.MIN_VALUE ? prev.clip_w : a.clip_w);
+				a.clip_h = (a.clip_h == Integer.MIN_VALUE ? prev.clip_h : a.clip_h);
 			}
-			if(dst.draw != null) {
-				skin.setDestination(obj, a.time, a.x, a.y, a.w, a.h, a.acc, a.a, a.r, a.g, a.b, dst.blend, dst.filter,
-						a.angle, dst.center, dst.loop, dst.timer, dst.draw);
-			} else {
-				skin.setDestination(obj, a.time, a.x, a.y, a.w, a.h, a.acc, a.a, a.r, a.g, a.b, dst.blend, dst.filter,
-						a.angle, dst.center, dst.loop, dst.timer, dst.op);
+			BooleanProperty[] draw = dst.getDrawConditions();
+			if (dst.draw != null) {
+				draw = java.util.Arrays.copyOf(draw, draw.length + 1);
+				draw[draw.length - 1] = dst.draw;
+			}
+			skin.setDestination(obj, a.time, a.x, a.y, a.w, a.h, a.acc, a.a, a.r, a.g, a.b, dst.blend, dst.filter,
+					a.angle, dst.center, dst.loop, dst.timer, dst.getOptionIds(), draw);
+			if (a.clip_x != Integer.MIN_VALUE && a.clip_y != Integer.MIN_VALUE && a.clip_w != Integer.MIN_VALUE && a.clip_h != Integer.MIN_VALUE) {
+				skin.setDestinationClip(obj, a.time, a.clip_x, a.clip_y, a.clip_w, a.clip_h);
 			}
 			if (dst.mouseRect != null) {
 				skin.setMouseRect(obj, dst.mouseRect.x, dst.mouseRect.y, dst.mouseRect.w, dst.mouseRect.h);

@@ -4,8 +4,10 @@ import bms.player.beatoraja.MainState;
 import bms.player.beatoraja.skin.Skin.SkinObjectRenderer;
 import bms.player.beatoraja.skin.property.StringProperty;
 import bms.player.beatoraja.skin.property.StringPropertyFactory;
+import bms.player.beatoraja.skin.property.StringWriter;
 
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.Align;
 
@@ -15,6 +17,12 @@ import com.badlogic.gdx.utils.Align;
  * @author exch
  */
 public abstract class SkinText extends SkinObject {
+
+    /**
+     * A text layout prepared for callers that render many independent values with one SkinText.
+     */
+    public interface CachedTextLayout {
+    }
 
     private int align = ALIGN_LEFT;
 	public static final int ALIGN_LEFT = 0;
@@ -33,6 +41,7 @@ public abstract class SkinText extends SkinObject {
     private String constantText;
 
     private boolean editable;
+    private StringWriter writer;
 
     private boolean wrapping;
     private int overflow;
@@ -43,6 +52,7 @@ public abstract class SkinText extends SkinObject {
     private float shadowSmoothness;
     
     private String currentText;
+    private final Rectangle inputBounds = new Rectangle();
 
     public SkinText(int id) {
     	ref = StringPropertyFactory.getStringProperty(id);
@@ -52,11 +62,11 @@ public abstract class SkinText extends SkinObject {
         ref = property;
     }
 
-    public int getAlign() {
+    public final int getAlign() {
 		return align;
 	}
 
-    public void setAlign(int align) {
+    public final void setAlign(int align) {
         this.align = align;
     }
     
@@ -78,12 +88,22 @@ public abstract class SkinText extends SkinObject {
 
     public abstract void prepareFont(String text);
 
+    /**
+     * Returns whether this text implementation needs the complete character set before rendering dynamic text.
+     */
+    public boolean requiresFontPreparation() {
+        return false;
+    }
+
     protected abstract void prepareText(String text);
     
     public void prepare(long time, MainState state) {
     	super.prepare(time, state);
         currentText = ref != null ? ref.get(state) : (constantText != null ? constantText : null);
-        if(currentText == null || currentText.length() == 0) {
+        if(currentText == null) {
+            currentText = "";
+        }
+        if(currentText.length() == 0 && !(editable && writer != null)) {
         	draw = false;
             return;
         }
@@ -97,68 +117,110 @@ public abstract class SkinText extends SkinObject {
     }
 
     public abstract void draw(SkinObjectRenderer sprite, float offsetX, float offsetY);
+
+    /**
+     * Creates a reusable layout for a caller-managed text cache, or {@code null} when unsupported.
+     */
+    public CachedTextLayout createCachedTextLayout(String text) {
+        return null;
+    }
+
+    /**
+     * Returns whether a caller-managed cached layout still matches this text object's destination and style.
+     */
+    public boolean isCachedTextLayoutValid(CachedTextLayout layout) {
+        return false;
+    }
+
+    /**
+     * Draws a caller-managed cached layout. Returns {@code false} when the layout type is unsupported.
+     */
+    public boolean drawCachedTextLayout(SkinObjectRenderer sprite, CachedTextLayout layout, float offsetX, float offsetY) {
+        return false;
+    }
     
-    public boolean isEditable() {
+    public final boolean isEditable() {
         return editable;
     }
 
-    public void setEditable(boolean editable) {
+    public final void setEditable(boolean editable) {
         this.editable = editable;
     }
 
-    public boolean isWrapping() {
+    public final StringWriter getWriter() {
+        return writer;
+    }
+
+    public final void setWriter(StringWriter writer) {
+        this.writer = writer;
+    }
+
+    public final String getCurrentText() {
+        return currentText != null ? currentText : text;
+    }
+
+    public final Rectangle getInputBounds() {
+        float x = switch (getAlign()) {
+            case ALIGN_RIGHT -> region.x - region.width;
+            case ALIGN_CENTER -> region.x - region.width / 2;
+            default -> region.x;
+        };
+        return inputBounds.set(x, region.y, region.width, region.height);
+    }
+
+    public final boolean isWrapping() {
         return wrapping;
     }
 
-    public void setWrapping(boolean value) {
+    public final void setWrapping(boolean value) {
         wrapping = value;
     }
 
-    public int getOverflow() {
+    public final int getOverflow() {
         return overflow;
     }
 
-    public void setOverflow(int value) {
+    public final void setOverflow(int value) {
         overflow = value;
     }
 
-    public Color getOutlineColor() {
+    public final Color getOutlineColor() {
         return outlineColor;
     }
 
-    public void setOutlineColor(Color color) {
+    public final void setOutlineColor(Color color) {
         outlineColor = color;
     }
 
-    public float getOutlineWidth() {
+    public final float getOutlineWidth() {
         return outlineWidth;
     }
 
-    public void setOutlineWidth(float value) {
+    public final void setOutlineWidth(float value) {
         outlineWidth = value;
     }
 
-    public Color getShadowColor() {
+    public final Color getShadowColor() {
         return shadowColor;
     }
 
-    public void setShadowColor(Color color) {
+    public final void setShadowColor(Color color) {
         shadowColor = color;
     }
 
-    public Vector2 getShadowOffset() {
+    public final Vector2 getShadowOffset() {
         return shadowOffset;
     }
 
-    public void setShadowOffset(Vector2 offset) {
+    public final void setShadowOffset(Vector2 offset) {
         shadowOffset = offset;
     }
 
-    public float getShadowSmoothness() {
+    public final float getShadowSmoothness() {
         return shadowSmoothness;
     }
 
-    public void setShadowSmoothness(float value) {
+    public final void setShadowSmoothness(float value) {
         shadowSmoothness = value;
     }
 }

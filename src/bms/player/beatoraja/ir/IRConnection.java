@@ -50,6 +50,16 @@ public interface IRConnection {
 	 */
 	public IRResponse<IRScoreData[]> getPlayData(IRPlayerData player, IRChartData chart);
 
+	/**
+	 * Retrieves score changes after a server-issued revision cursor.
+	 * Implementations that do not support incremental synchronization retain the
+	 * existing full-score behavior and leave the cursor at {@code -1}.
+	 */
+	public default IRScoreDataSyncResponse getPlayDataSince(IRPlayerData player, long scoreRevision) {
+		IRResponse<IRScoreData[]> response = getPlayData(player, null);
+		return new IRScoreDataSyncResponse(response.isSucceeded(), response.getMessage(), response.getData(), -1, false);
+	}
+
 	public IRResponse<IRScoreData[]> getCoursePlayData(IRPlayerData player, IRCourseData course);
 
 	/**
@@ -102,5 +112,31 @@ public interface IRConnection {
 	 * @return
 	 */
 	public String getPlayerURL(IRPlayerData player);
+
+	/**
+	 * IRが提供するbeatorajaのバージョン情報を取得する。
+	 * <p>
+	 * 未対応のIR実装はデフォルトで失敗レスポンスを返す。
+	 * </p>
+	 *
+	 * @param currentVersion
+	 *            現在のbeatorajaバージョン
+	 * @return バージョン情報
+	 */
+	public default IRResponse<IRVersionInfo> getVersionInfo(String currentVersion) {
+		return new SimpleIRResponse<>(false, "Not supported", null);
+	}
+
+	/**
+	 * IRが起動拒否対象として扱うBMSのSHA256一覧を取得する。
+	 * <p>
+	 * 未対応のIR実装はデフォルトで失敗レスポンスを返す。
+	 * </p>
+	 *
+	 * @return 起動拒否対象のSHA256一覧
+	 */
+	public default IRResponse<String[]> getIllegalSongs() {
+		return new SimpleIRResponse<>(false, "Not supported", new String[0]);
+	}
 
 }

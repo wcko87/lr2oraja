@@ -2,17 +2,31 @@ package bms.player.beatoraja;
 
 import java.io.*;
 import java.net.URL;
+import java.net.URLConnection;
 import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.ErrorManager;
 import java.util.logging.FileHandler;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.swing.JOptionPane;
 
+import bms.player.beatoraja.input.BMSPlayerInputProcessor;
 import com.badlogic.gdx.ApplicationListener;
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Graphics;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
@@ -22,12 +36,16 @@ import com.badlogic.gdx.backends.lwjgl.LwjglApplication;
 import com.badlogic.gdx.backends.lwjgl.LwjglApplicationConfiguration;
 
 import bms.player.beatoraja.AudioConfig.DriverType;
+import bms.player.beatoraja.ir.IRConnection;
 import bms.player.beatoraja.ir.IRConnectionManager;
+import bms.player.beatoraja.ir.IRResponse;
+import bms.player.beatoraja.ir.IRVersionInfo;
 import bms.player.beatoraja.launcher.PlayConfigurationView;
 import bms.player.beatoraja.song.SQLiteSongDatabaseAccessor;
 import bms.player.beatoraja.song.SongData;
 import bms.player.beatoraja.song.SongDatabaseAccessor;
 import bms.player.beatoraja.song.SongUtils;
+import jdk.jfr.StackTrace;
 
 /**
  * 起動用クラス
@@ -37,14 +55,16 @@ import bms.player.beatoraja.song.SongUtils;
 public class MainLoader extends Application {
 
 	private static final boolean ALLOWS_32BIT_JAVA = false;
-
-	private static SongDatabaseAccessor songdb;
+	// Change to BATCHED after comparing songdata.db update performance on target environments.
+	private static final SQLiteSongDatabaseAccessor.SongUpdaterType SONG_UPDATER_TYPE = SQLiteSongDatabaseAccessor.SongUpdaterType.BATCHED;
 
 	private static final Set<String> illegalSongs = new HashSet<String>();
 
 	private static Path bmsPath;
 
 	private static VersionChecker version;
+
+	private final SongDatabaseAccessorProvider songDatabaseAccessorProvider = new SongDatabaseAccessorProvider();
 
 	public static void main(String[] args) {
 
@@ -53,12 +73,7 @@ public class MainLoader extends Application {
 			System.exit(1);
 		}
 
-		Logger logger = Logger.getGlobal();
-		try {
-			logger.addHandler(new FileHandler("beatoraja_log.xml"));
-		} catch (Throwable e) {
-			e.printStackTrace();
-		}
+		configureLogger();
 
 		BMSPlayerMode auto = null;
 		for (String s : args) {
@@ -102,13 +117,42 @@ public class MainLoader extends Application {
 		}
 	}
 
+	private static void configureLogger() {
+		Logger logger = Logger.getGlobal();
+		try {
+			AsyncLogHandler consoleHandler = new AsyncLogHandler(new ConsoleHandler());
+			AsyncLogHandler fileHandler = new AsyncLogHandler(new FileHandler("beatoraja_log.xml"));
+			logger.setUseParentHandlers(false);
+			logger.addHandler(consoleHandler);
+			logger.addHandler(fileHandler);
+			Runtime.getRuntime().addShutdownHook(new Thread(() -> closeLogHandlers(logger), "beatoraja-log-shutdown"));
+		} catch (Throwable e) {
+			e.printStackTrace();
+		}
+	}
+
+	private static void closeLogHandlers(Logger logger) {
+		for (Handler handler : logger.getHandlers()) {
+			handler.close();
+		}
+	}
+
 	public static void play(Path f, BMSPlayerMode auto, boolean forceExit, Config config, PlayerConfig player, boolean songUpdated) {
 		if(config == null) {
 			config = Config.read();
 		}
+		if(player == null) {
+			player = PlayerConfig.readPlayerConfig(config.getPlayerpath(), config.getPlayername());
+		}
 
-		for(SongData song : getScoreDatabaseAccessor().getSongDatas(SongUtils.illegalsongs)) {
-			MainLoader.putIllegalSong(song.getSha256());
+		SongDatabaseAccessor songdb;
+		try {
+			songdb = new SongDatabaseAccessorProvider().get(config, player.getId());
+			detectIllegalSongs(songdb, player);
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+			Logger.getGlobal().severe("楽曲データベース初期化中の例外:" + e.getMessage());
+			return;
 		}
 		if(illegalSongs.size() > 0) {
 			JOptionPane.showMessageDialog(null, "This Application detects " + illegalSongs.size() + " illegal BMS songs. \n Remove them, update song database and restart.", "Error", JOptionPane.ERROR_MESSAGE);
@@ -116,7 +160,7 @@ public class MainLoader extends Application {
 		}
 
 		try {
-			final MainController main = new MainController(f, config, player, auto, songUpdated);
+			final MainController main = new MainController(f, config, player, auto, songUpdated, songdb);
 
 			LwjglApplicationConfiguration cfg = new LwjglApplicationConfiguration();
 			cfg.width = config.getResolution().width;
@@ -141,14 +185,19 @@ public class MainLoader extends Application {
 			cfg.foregroundFPS = config.getMaxFramePerSecond();
 			cfg.title = MainController.getVersion();
 
-			cfg.audioDeviceBufferSize = config.getAudioConfig().getDeviceBufferSize();
+			if(config.getAudioConfig().getDriver() == DriverType.AudioDevice) {
+				cfg.audioDeviceBufferSize = Math.max(config.getAudioConfig().getDeviceBufferSize() * 2 * 2, 4096);
+			} else {
+				cfg.audioDeviceBufferSize = config.getAudioConfig().getDeviceBufferSize();
+			}
 			cfg.audioDeviceSimultaneousSources = config.getAudioConfig().getDeviceSimultaneousSources();
 			cfg.forceExit = forceExit;
-			if(config.getAudioConfig().getDriver() != DriverType.OpenAL) {
+			if(config.getAudioConfig().getDriver() == DriverType.PortAudio) {
 				LwjglApplicationConfiguration.disableAudio = true;
 			}
 			// System.setProperty("org.lwjgl.opengl.Display.allowSoftwareOpenGL",
 			// "true");
+
 			new LwjglApplication(new ApplicationListener() {
 				
 				public void resume() {
@@ -174,7 +223,32 @@ public class MainLoader extends Application {
 				public void create() {
 					main.create();
 				}
-			}, cfg);
+			}, cfg) {
+				// This is some kind of hack. Refer to com.badlogic.gdx.controllers.desktop.OisControllers code.
+				// OisControllers creates a runnable that polls the controller input. It polls the input every frame via
+				// `Gdx.app.postRunnable` function.
+				//
+				// We want it to poll the input on every poll thread's interval. Be it 1000Hz or 8000Hz.
+				// To achieve that, we *intercept* the runnable, store it somewhere else, and call that runnable
+				// directly on the polling thread. (BMSPlayerInputProcessor.poll). Further postRunnable for that
+				// runnable will be prohibited.
+				private Runnable oisRunnable = null;
+				@Override
+				public void postRunnable(Runnable runnable) {
+					if (oisRunnable == null) {
+						StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+						if (stackTrace.length >= 3) {
+							if (stackTrace[2].getClassName().startsWith("com.badlogic.gdx.controllers.desktop.OisControllers")) {
+								oisRunnable = runnable;
+								BMSPlayerInputProcessor.controllerPollRunner = runnable;
+							}
+						}
+					}
+					else if (runnable == oisRunnable) return;
+
+					super.postRunnable(runnable);
+				}
+			};
 
 //			Lwjgl3ApplicationConfiguration cfg = new Lwjgl3ApplicationConfiguration();
 //
@@ -221,22 +295,9 @@ public class MainLoader extends Application {
 		return LwjglApplicationConfiguration.getDesktopDisplayMode();
 	}
 
-	public static SongDatabaseAccessor getScoreDatabaseAccessor() {
-		if(songdb == null) {
-			try {
-				Config config = Config.read();
-				Class.forName("org.sqlite.JDBC");
-				songdb = new SQLiteSongDatabaseAccessor(config.getSongpath(), config.getBmsroot());
-			} catch (ClassNotFoundException e) {
-				e.printStackTrace();
-			}
-		}
-		return songdb;
-	}
-
 	public static VersionChecker getVersionChecker() {
 		if(version == null) {
-			version = new GithubVersionChecker();
+			version = new CompositeVersionChecker();
 		}
 		return version;
 	}
@@ -263,6 +324,63 @@ public class MainLoader extends Application {
 		return illegalSongs.size();
 	}
 
+	private static void detectIllegalSongs(SongDatabaseAccessor songdb, PlayerConfig player) {
+		illegalSongs.clear();
+
+		Set<String> hashes = new LinkedHashSet<>();
+		addIllegalSongHashes(hashes, SongUtils.illegalsongs);
+		for(IRConfig irconfig : player.getIrconfig()) {
+			if(irconfig == null || irconfig.getIrname() == null || irconfig.getIrname().length() == 0) {
+				continue;
+			}
+			IRConnection ir = IRConnectionManager.getIRConnection(irconfig.getIrname());
+			if(ir == null) {
+				continue;
+			}
+			try {
+				IRResponse<String[]> response = ir.getIllegalSongs();
+				if(response.isSucceeded()) {
+					addIllegalSongHashes(hashes, response.getData());
+				} else if(response.getMessage() != null && response.getMessage().length() > 0
+						&& !"Not supported".equals(response.getMessage())) {
+					Logger.getGlobal().warning("IR illegal song list取得失敗 - " + irconfig.getIrname() + " : "
+							+ response.getMessage());
+				}
+			} finally {
+				closeIRConnection(ir);
+			}
+		}
+
+		if(hashes.isEmpty()) {
+			return;
+		}
+		for(SongData song : songdb.getSongDatas(hashes.toArray(String[]::new))) {
+			if(song != null && song.getSha256() != null && song.getSha256().length() > 0) {
+				MainLoader.putIllegalSong(song.getSha256());
+			}
+		}
+	}
+
+	private static void addIllegalSongHashes(Set<String> hashes, String[] candidates) {
+		if(candidates == null) {
+			return;
+		}
+		for(String candidate : candidates) {
+			if(candidate != null && candidate.length() == 64) {
+				hashes.add(candidate);
+			}
+		}
+	}
+
+	private static void closeIRConnection(IRConnection ir) {
+		if(ir instanceof AutoCloseable closeable) {
+			try {
+				closeable.close();
+			} catch(Exception e) {
+			}
+		}
+	}
+
 	@Override
 	public void start(javafx.stage.Stage primaryStage) throws Exception {
 		Config config = Config.read();
@@ -275,6 +393,7 @@ public class MainLoader extends Application {
 			VBox stackPane = (VBox) loader.load();
 			PlayConfigurationView bmsinfo = (PlayConfigurationView) loader.getController();
 			bmsinfo.setBMSInformationLoader(this);
+			bmsinfo.setSongDatabaseAccessorResolver(songDatabaseAccessorProvider::get);
 			bmsinfo.update(config);
 			Scene scene = new Scene(stackPane, stackPane.getPrefWidth(), stackPane.getPrefHeight());
 			primaryStage.setScene(scene);
@@ -291,12 +410,122 @@ public class MainLoader extends Application {
 		}
 	}
 
+	private static class SongDatabaseAccessorProvider {
+
+		private SongDatabaseAccessor songdb;
+
+		private String songpath;
+
+		private String reviewpath;
+
+		private boolean scanSongArchives;
+
+		private Config.SongArchiveExtractMode songArchiveExtractMode;
+
+		public synchronized SongDatabaseAccessor get(Config config) throws ClassNotFoundException {
+			return get(config, config.getPlayername());
+		}
+
+		public synchronized SongDatabaseAccessor get(Config config, String playername) throws ClassNotFoundException {
+			String nextSongpath = config.getSongpath();
+			String nextReviewpath = getSongReviewPath(config, playername);
+			if (songdb == null || !nextSongpath.equals(songpath) || !nextReviewpath.equals(reviewpath)
+					|| config.isScanSongArchives() != scanSongArchives
+					|| config.getSongArchiveExtractMode() != songArchiveExtractMode) {
+				Class.forName("org.sqlite.JDBC");
+				songdb = new SQLiteSongDatabaseAccessor(nextSongpath, config.getBmsroot(), nextReviewpath,
+						SONG_UPDATER_TYPE, config.isScanSongArchives(), config.getSongArchiveExtractMode());
+				songpath = nextSongpath;
+				reviewpath = nextReviewpath;
+				scanSongArchives = config.isScanSongArchives();
+				songArchiveExtractMode = config.getSongArchiveExtractMode();
+			}
+			return songdb;
+		}
+
+		private String getSongReviewPath(Config config, String playername) {
+			return config.getPlayerpath() + File.separatorChar + playername + File.separatorChar + "songreview.db";
+		}
+	}
+
 	public interface VersionChecker {
 		public String getMessage();
 		public String getDownloadURL();
 	}
 
+	private static class CompositeVersionChecker implements VersionChecker {
+
+		private String dlurl;
+		private String message;
+
+		public String getMessage() {
+			if(message == null) {
+				getInformation();
+			}
+			return message;
+		}
+
+		public String getDownloadURL() {
+			if(message == null) {
+				getInformation();
+			}
+			return dlurl;
+		}
+
+		private void getInformation() {
+			VersionChecker github = new GithubVersionChecker();
+			message = github.getMessage();
+			dlurl = github.getDownloadURL();
+
+			IRVersionInfo irVersion = getIRVersionInfo();
+			if(irVersion != null) {
+				message = getIRVersionMessage(irVersion);
+				dlurl = irVersion.downloadURL;
+			}
+		}
+
+		private IRVersionInfo getIRVersionInfo() {
+			Config config = Config.read();
+			PlayerConfig player = PlayerConfig.readPlayerConfig(config.getPlayerpath(), config.getPlayername());
+			for(IRConfig irconfig : player.getIrconfig()) {
+				if(irconfig == null || irconfig.getIrname() == null || irconfig.getIrname().length() == 0) {
+					continue;
+				}
+				IRConnection ir = IRConnectionManager.getIRConnection(irconfig.getIrname());
+				if(ir == null) {
+					continue;
+				}
+				try {
+					IRResponse<IRVersionInfo> response = ir.getVersionInfo(MainController.getVersion());
+					if(response.isSucceeded() && response.getData() != null) {
+						return response.getData();
+					}
+					if(response.getMessage() != null && response.getMessage().length() > 0
+							&& !"Not supported".equals(response.getMessage())) {
+						Logger.getGlobal().warning("IR version取得失敗 - " + irconfig.getIrname() + " : "
+								+ response.getMessage());
+					}
+				} finally {
+					closeIRConnection(ir);
+				}
+			}
+			return null;
+		}
+
+		private String getIRVersionMessage(IRVersionInfo version) {
+			if(version.message != null && version.message.length() > 0) {
+				return version.message;
+			}
+			if(version.version != null && version.version.length() > 0
+					&& !MainController.getVersion().contains(version.version)) {
+				return String.format("最新版[%s]を利用可能です。", version.version);
+			}
+			return "最新版を利用中です";
+		}
+	}
+
 	private static class GithubVersionChecker implements VersionChecker {
+		private static final Pattern RELEASE_NAME = Pattern.compile("\\\"name\\\"\\s*:\\s*\\\"((?:\\\\\\\\.|[^\\\"\\\\\\\\])*)\\\"");
 
 		private String dlurl;
 		private String message;
@@ -318,25 +547,155 @@ public class MainLoader extends Application {
 		private void getInformation() {
 			try {
 				URL url = new URL("https://api.github.com/repos/exch-bms2/beatoraja/releases/latest");
-				ObjectMapper mapper = new ObjectMapper();
-				GithubLastestRelease lastestData = mapper.readValue(url, GithubLastestRelease.class);
-				final String name = lastestData.name;
+				URLConnection connection = url.openConnection();
+				connection.setConnectTimeout(5000);
+				connection.setReadTimeout(5000);
+				connection.setRequestProperty("Accept", "application/vnd.github+json");
+				connection.setRequestProperty("User-Agent", "beatoraja-version-checker");
+				final String name = getReleaseName(connection);
 				if (MainController.getVersion().contains(name)) {
 					message = "最新版を利用中です";
 				} else {
 					message = String.format("最新版[%s]を利用可能です。", name);
 					dlurl = "https://mocha-repository.info/download/beatoraja" + name + ".zip";
 				}
-			} catch (Exception e) {
+			} catch (Exception | LinkageError e) {
 				Logger.getGlobal().warning("最新版URL取得時例外:" + e.getMessage());
 				message = "バージョン情報を取得できませんでした";
 			}
 		}
+
+		private String getReleaseName(URLConnection connection) throws IOException {
+			StringBuilder response = new StringBuilder();
+			try (Reader reader = new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8)) {
+				char[] buffer = new char[4096];
+				for (int length; (length = reader.read(buffer)) >= 0;) {
+					response.append(buffer, 0, length);
+				}
+			}
+
+			Matcher matcher = RELEASE_NAME.matcher(response);
+			if (!matcher.find()) {
+				throw new IOException("GitHub release response does not contain a name");
+			}
+			return matcher.group(1).replace("\\\\\"", "\"").replace("\\\\\\\\", "\\");
+		}
 	}
 
-	@JsonIgnoreProperties(ignoreUnknown=true)
-	static class GithubLastestRelease{
-		public String name;
+	/**
+	 * Delegates log output to a background thread so caller threads do not wait for
+	 * console or file I/O.
+	 */
+	private static final class AsyncLogHandler extends Handler {
+
+		private static final int DEFAULT_CAPACITY = 8192;
+		private static final long CLOSE_TIMEOUT_MILLIS = 5000;
+
+		private final Handler delegate;
+		private final BlockingQueue<LogRecord> queue;
+		private final AtomicBoolean closed = new AtomicBoolean();
+		private final AtomicLong droppedRecords = new AtomicLong();
+		private final Thread worker;
+
+		private volatile boolean running = true;
+
+		private AsyncLogHandler(Handler delegate) {
+			this(delegate, Integer.getInteger("beatoraja.log.async.queue.size", DEFAULT_CAPACITY));
+		}
+
+		private AsyncLogHandler(Handler delegate, int capacity) {
+			this.delegate = delegate;
+			queue = new ArrayBlockingQueue<>(Math.max(1, capacity));
+			setLevel(delegate.getLevel());
+			setFilter(delegate.getFilter());
+			worker = new Thread(this::processQueue, "beatoraja-async-log");
+			worker.setDaemon(true);
+			worker.start();
+		}
+
+		@Override
+		public void publish(LogRecord record) {
+			if (closed.get() || !isLoggable(record)) {
+				return;
+			}
+
+			if (queue.offer(record)) {
+				return;
+			}
+
+			droppedRecords.incrementAndGet();
+			if (record.getLevel().intValue() >= Level.SEVERE.intValue()) {
+				queue.poll();
+				queue.offer(record);
+			}
+		}
+
+		@Override
+		public void flush() {
+			delegate.flush();
+		}
+
+		@Override
+		public void close() {
+			if (!closed.compareAndSet(false, true)) {
+				return;
+			}
+
+			running = false;
+			worker.interrupt();
+			try {
+				worker.join(CLOSE_TIMEOUT_MILLIS);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+
+			drainQueue();
+			publishDroppedRecords();
+			delegate.flush();
+			delegate.close();
+		}
+
+		private void processQueue() {
+			while (running || !queue.isEmpty()) {
+				try {
+					LogRecord record = queue.poll(1, TimeUnit.SECONDS);
+					if (record != null) {
+						publishToDelegate(record);
+					}
+				} catch (InterruptedException e) {
+					if (!running) {
+						break;
+					}
+				}
+			}
+			drainQueue();
+		}
+
+		private void drainQueue() {
+			LogRecord record;
+			while ((record = queue.poll()) != null) {
+				publishToDelegate(record);
+			}
+		}
+
+		private void publishToDelegate(LogRecord record) {
+			try {
+				delegate.publish(record);
+			} catch (RuntimeException e) {
+				reportError(e.getMessage(), e, ErrorManager.WRITE_FAILURE);
+			}
+		}
+
+		private void publishDroppedRecords() {
+			long dropped = droppedRecords.get();
+			if (dropped == 0) {
+				return;
+			}
+
+			LogRecord record = new LogRecord(Level.WARNING, "Async logger dropped " + dropped + " log records.");
+			record.setLoggerName("global");
+			publishToDelegate(record);
+		}
 	}
 
 }

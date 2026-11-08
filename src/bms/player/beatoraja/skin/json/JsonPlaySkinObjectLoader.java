@@ -212,6 +212,12 @@ public class JsonPlaySkinObjectLoader extends JsonSkinObjectLoader<PlaySkin> {
 				}
 			}
 		}
+		// practice configuration (playskin only)
+		if (sk.practice != null && dst.id.equals(sk.practice.id)) {
+			SkinPractice practice = new SkinPractice(sk.practice.visibleItems);
+			skin.setPractice(practice);
+			return practice;
+		}
 		// bga (playskin only)
 		if (sk.bga != null && dst.id.equals(sk.bga.id)) {
 			return new SkinBGA(loader.bgaExpand);
@@ -292,9 +298,10 @@ public class JsonPlaySkinObjectLoader extends JsonSkinObjectLoader<PlaySkin> {
 				if(dst.dst.length > 0 && imagefile != null) {
 					int color = chara.color == 2 ? 2 : 1;
 					int side = chara.side == 2 ? 2 : 1;
+					int[] sourceOptions = dst.getOptionIds();
 					int[] option = new int[3];
 					for(int i = 0; i < option.length; i++) {
-						if(i < dst.op.length) option[i] = dst.op[i];
+						if(i < sourceOptions.length) option[i] = sourceOptions[i];
 						else option[i] = 0;
 					}
 					if(chara.type == 0) {
